@@ -1,0 +1,9 @@
+﻿/* Sarthi – Google Fonts loaded via index.html link tag */
+/* Outfit: Headings & display text */
+/* Inter: Body text & UI elements */
+
+/* Font variable assignments */
+:root {
+  --font-display: 'Outfit', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+}

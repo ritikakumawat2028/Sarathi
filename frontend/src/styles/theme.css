@@ -1,0 +1,183 @@
+﻿@custom-variant dark (&:is(.dark *));
+
+/* ==========================================================================
+   SARTHI - NATIONAL GOVERNMENT DIGITAL PORTAL DESIGN SYSTEM
+   Inspired by: Digital India, MyScheme, DigiLocker, UIDAI
+   ========================================================================== */
+
+:root {
+  --font-size: 16px;
+
+  /* Brand Government Colors */
+  --sarathi-navy: #0F2B5B;
+  --sarathi-navy-dark: #0A1E40;
+  --sarathi-royal: #1D4ED8;
+  --sarathi-saffron: #F97316;
+  --sarathi-saffron-dark: #EA580C;
+  --sarathi-green: #16A34A;
+  --sarathi-green-dark: #15803D;
+
+  /* Theme System Tokens - Darker Border (#CBD5E1) for distinct partitioning */
+  --background: #F8FAFC;
+  --foreground: #0F172A;
+  --card: #FFFFFF;
+  --card-foreground: #0F172A;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F172A;
+  --primary: #0F2B5B;
+  --primary-foreground: #FFFFFF;
+  --secondary: #EFF6FF;
+  --secondary-foreground: #1D4ED8;
+  --muted: #F1F5F9;
+  --muted-foreground: #475569;
+  --accent: #FFF7ED;
+  --accent-foreground: #EA580C;
+  --destructive: #DC2626;
+  --destructive-foreground: #FFFFFF;
+  --border: #CBD5E1;
+  --input: #FFFFFF;
+  --input-background: #FFFFFF;
+  --switch-background: #94A3B8;
+  --font-weight-medium: 600;
+  --font-weight-normal: 400;
+  --ring: #1D4ED8;
+
+  /* Charts */
+  --chart-1: #0F2B5B;
+  --chart-2: #1D4ED8;
+  --chart-3: #F97316;
+  --chart-4: #16A34A;
+  --chart-5: #6366F1;
+
+  /* Card Radius */
+  --radius: 1.25rem;
+
+  /* Sidebar Tokens */
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #0F172A;
+  --sidebar-primary: #0F2B5B;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #EFF6FF;
+  --sidebar-accent-foreground: #1D4ED8;
+  --sidebar-border: #CBD5E1;
+  --sidebar-ring: #1D4ED8;
+}
+
+.dark {
+  --background: #09101F;
+  --foreground: #F8FAFC;
+  --card: #0F1A30;
+  --card-foreground: #F8FAFC;
+  --popover: #111D36;
+  --popover-foreground: #F8FAFC;
+  --primary: #3B82F6;
+  --primary-foreground: #FFFFFF;
+  --secondary: #1E293B;
+  --secondary-foreground: #F8FAFC;
+  --muted: #1E293B;
+  --muted-foreground: #94A3B8;
+  --accent: #1E293B;
+  --accent-foreground: #F97316;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --border: #334155;
+  --input: #0F1A30;
+  --ring: #3B82F6;
+  --font-weight-medium: 600;
+  --font-weight-normal: 400;
+  --chart-1: #3B82F6;
+  --chart-2: #F97316;
+  --chart-3: #10B981;
+  --chart-4: #6366F1;
+  --chart-5: #A855F7;
+  --sidebar: #0B1324;
+  --sidebar-foreground: #F8FAFC;
+  --sidebar-primary: #3B82F6;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #1E293B;
+  --sidebar-accent-foreground: #F8FAFC;
+  --sidebar-border: #334155;
+  --sidebar-ring: #3B82F6;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-size: var(--font-size);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* ==========================================================================
+   GOVERNMENT PORTAL UTILITY COMPONENTS & ACCESSIBILITY
+   ========================================================================== */
+
+/* Tricolor Strip */
+.gov-tricolor-bar {
+  height: 4px;
+  background: linear-gradient(90deg, #F97316 33.3%, #FFFFFF 33.3%, #FFFFFF 66.6%, #16A34A 66.6%);
+}
+
+/* Premium Government Card */
+.gov-card {
+  background-color: var(--card);
+  border-radius: 20px;
+  border: 1px solid #CBD5E1;
+  box-shadow: 0 4px 6px -1px rgba(15, 43, 91, 0.06), 0 2px 4px -2px rgba(15, 43, 91, 0.04);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.gov-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 24px -4px rgba(15, 43, 91, 0.12), 0 8px 12px -4px rgba(15, 43, 91, 0.08);
+  border-color: #94A3B8;
+}
+
+/* Clear, High-Contrast Table Styling */
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+thead th {
+  border-bottom: 2px solid #64748B !important;
+  background-color: #F1F5F9;
+  color: #0F2B5B;
+  font-weight: 700;
+  text-align: left;
+  padding: 0.75rem 1rem;
+}
+
+tbody tr {
+  border-bottom: 1px solid #CBD5E1 !important;
+  transition: background-color 0.15s ease;
+}
+
+tbody tr:hover {
+  background-color: rgba(239, 246, 255, 0.6);
+}
+
+td {
+  padding: 0.75rem 1rem;
+}
+
+/* Responsive wrapper for phone screens */
+.gov-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 1rem;
+  border: 1px solid #CBD5E1;
+}
+
+/* Soft scrollbar */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
