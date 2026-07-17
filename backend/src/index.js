@@ -1,4 +1,4 @@
-﻿import express from 'express';
+import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -15,6 +15,8 @@ import careerRoutes from './routes/career.routes.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 import { getSchemes, refreshSchemes } from './services/schemeSource.service.js';
 import chatRoutes from './routes/chat.routes.js';
+import { solveStudentDoubt } from './controllers/user.controller.js';
+import jwt from 'jsonwebtoken';
 
 const app = express();
 
@@ -36,6 +38,24 @@ app.use('/api/chat', chatRoutes);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
+
+// Dedicated standalone endpoint for Student Doubt Solver (POST /api/student/doubt-solver)
+app.post('/api/student/doubt-solver', async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      try {
+        const decoded = jwt.verify(token, config.jwtSecret);
+        req.userId = decoded.id;
+      } catch (_) {}
+    }
+    await solveStudentDoubt(req, res);
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.use('/api/schemes', schemesRoutes);
 app.use('/api/eligibility', eligibilityRoutes);
 app.use('/api/career', careerRoutes);

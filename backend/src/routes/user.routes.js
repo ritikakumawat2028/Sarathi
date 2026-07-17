@@ -25,6 +25,7 @@ router.delete('/study-plans/:planId', asyncHandler(userController.deleteStudyPla
 // Doubts
 router.get('/doubts', asyncHandler(userController.getDoubts));
 router.post('/doubts', asyncHandler(userController.addDoubt));
+router.post('/doubt-solver', asyncHandler(userController.solveStudentDoubt));
 
 // AI Chat
 router.post('/chat', asyncHandler(userController.chatWithAI));

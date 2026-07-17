@@ -1,27 +1,63 @@
 import mongoose from 'mongoose';
+import dns from 'dns';
 import { config } from '../config.js';
 
 let isConnected = false;
 
+// Ensure DNS resolution works for mongodb+srv:// on systems where default DNS is 127.0.0.1
+try {
+  const currentServers = dns.getServers();
+  if (currentServers && currentServers.join(',') === '127.0.0.1') {
+    dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+  }
+} catch (e) {
+  // ignore DNS setup errors
+}
+
 export async function connectDB() {
-  if (isConnected) return;
-
-  const uri = config.mongoUri;
-  if (!uri) {
-    console.warn('⚠️  MONGODB_URI not set. Falling back to local: mongodb://localhost:27017/sarathi-ai');
-  }
-
-  try {
-    await mongoose.connect(uri || 'mongodb://localhost:27017/sarathi-ai', {
-      serverSelectionTimeoutMS: 5000,
-    });
+  if (isConnected || mongoose.connection.readyState === 1) {
     isConnected = true;
-    console.log('✅ MongoDB connected:', mongoose.connection.host);
-  } catch (err) {
-    console.error('❌ MongoDB connection failed:', err.message);
-    console.error('   Make sure MongoDB is running or MONGODB_URI is set in backend/.env');
-    // Don't crash the server — it can still serve scheme data from cache/seed
+    return;
   }
+
+  const primaryUri = config.mongoUri;
+  const localUris = [
+    'mongodb://127.0.0.1:27017/sarathi-ai',
+    'mongodb://localhost:27017/sarathi-ai'
+  ];
+
+  // Try primary URI first if configured
+  if (primaryUri) {
+    try {
+      await mongoose.connect(primaryUri, {
+        serverSelectionTimeoutMS: 3500,
+      });
+      isConnected = true;
+      console.log('✅ MongoDB connected successfully to primary cluster:', mongoose.connection.host);
+      return;
+    } catch (err) {
+      console.warn('⚠️ Primary MongoDB cluster connection failed (' + err.message + '). Automatically falling back to local database...');
+    }
+  }
+
+  // Try local MongoDB fallbacks
+  for (const localUri of localUris) {
+    if (localUri === primaryUri) continue;
+    try {
+      await mongoose.connect(localUri, {
+        serverSelectionTimeoutMS: 3000,
+      });
+      isConnected = true;
+      console.log('✅ MongoDB connected successfully to local fallback:', mongoose.connection.host);
+      return;
+    } catch (localErr) {
+      // try next fallback
+    }
+  }
+
+  console.error('❌ All MongoDB connection attempts failed. Please ensure local MongoDB is running (`mongod`) or check MONGODB_URI.');
+  // Set lower buffer timeout so login/signup fail fast with clear error instead of hanging for 10s
+  mongoose.set('bufferTimeoutMS', 2000);
 }
 
 export { mongoose };
