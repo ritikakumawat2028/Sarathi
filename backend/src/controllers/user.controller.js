@@ -1394,7 +1394,7 @@ export async function chatWithAI(req, res) {
       const classification = classifyQuestionIntentAndSubject(message, '');
       const systemPrompt = `[ROUTING CLASSIFICATION: Expert = ${classification.expert}, Subject = ${classification.subject}, Intent = ${classification.intent}]\nYou MUST act as ${classification.expert} and strictly obey ${classification.expert}'s mandatory response format and rules.\n\n${STUDENT_TUTOR_SYSTEM_PROMPT}\n\nAlways reply accurately in the user's preferred language (${language || 'en'}).`;
 
-      const modelsToTry = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+      const modelsToTry = ['gemini-3-flash-preview', 'gemini-3.1-flash-lite', 'gemma-4-31b-it', 'gemini-2.5-flash', 'gemini-2.0-flash'];
       for (const modelName of modelsToTry) {
         try {
           const response = await fetch(

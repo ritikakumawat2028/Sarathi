@@ -1,4 +1,4 @@
-﻿import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Conversation, Message, ChatFolder, UploadedFile } from './types';
 import {
   loadConversations,
@@ -15,9 +15,13 @@ import {
 } from './ConversationManager';
 import { sendMessageStreaming, buildHistory } from './geminiService';
 
-export function useChatStore(language: string) {
-  const [conversations, setConversations] = useState<Conversation[]>(() => loadConversations());
-  const [folders, setFolders] = useState<ChatFolder[]>(() => loadFolders());
+export function useChatStore(language: string, userId: string) {
+  const [conversations, setConversations] = useState<Conversation[]>(() =>
+    userId ? loadConversations(userId) : []
+  );
+  const [folders, setFolders] = useState<ChatFolder[]>(() =>
+    userId ? loadFolders(userId) : []
+  );
   const [activeId, setActiveId] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -30,14 +34,27 @@ export function useChatStore(language: string) {
 
   const abortRef = useRef<AbortController | null>(null);
 
-  // Persist conversations whenever they change
+  // Reload conversations & folders when user changes (login/logout)
   useEffect(() => {
-    saveConversations(conversations);
-  }, [conversations]);
+    if (userId) {
+      setConversations(loadConversations(userId));
+      setFolders(loadFolders(userId));
+      setActiveId(null);
+    } else {
+      setConversations([]);
+      setFolders([]);
+      setActiveId(null);
+    }
+  }, [userId]);
+
+  // Persist conversations whenever they change (only when logged in)
+  useEffect(() => {
+    if (userId) saveConversations(conversations, userId);
+  }, [conversations, userId]);
 
   useEffect(() => {
-    saveFolders(folders);
-  }, [folders]);
+    if (userId) saveFolders(folders, userId);
+  }, [folders, userId]);
 
   // ── Derived state ─────────────────────────────────────────
 

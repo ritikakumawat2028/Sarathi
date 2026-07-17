@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { useLanguage } from '@/app/context/LanguageContext';
 import { useAuth } from '@/app/context/AuthContext';
@@ -18,7 +18,7 @@ export function AIChat() {
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const store = useChatStore(language);
+  const store = useChatStore(language, user?.id ?? '');
 
   const {
     conversations,

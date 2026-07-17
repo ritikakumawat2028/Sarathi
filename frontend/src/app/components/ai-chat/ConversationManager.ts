@@ -1,18 +1,20 @@
-﻿// ============================================================
+// ============================================================
 // ConversationManager — localStorage-backed persistence
+// All keys are SCOPED PER USER so no two users share chat history.
 // ============================================================
 
 import type { Conversation, ChatFolder, Message } from './types';
 
-const STORAGE_KEY = 'sarathi_ai_conversations';
-const FOLDERS_KEY = 'sarathi_ai_folders';
-const MEMORY_KEY = 'sarathi_ai_memory';
+// Returns a user-scoped storage key so each user's data is isolated.
+function storageKey(base: string, userId: string): string {
+  return `${base}_${userId}`;
+}
 
 // ── Conversations ────────────────────────────────────────────
 
-export function loadConversations(): Conversation[] {
+export function loadConversations(userId: string): Conversation[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey('sarathi_ai_conversations', userId));
     if (!raw) return [];
     const parsed: Conversation[] = JSON.parse(raw);
     // Rehydrate Date objects
@@ -27,13 +29,13 @@ export function loadConversations(): Conversation[] {
   }
 }
 
-export function saveConversations(conversations: Conversation[]): void {
+export function saveConversations(conversations: Conversation[], userId: string): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
+    localStorage.setItem(storageKey('sarathi_ai_conversations', userId), JSON.stringify(conversations));
   } catch {
     // Storage quota exceeded — silently drop oldest
     const trimmed = conversations.slice(-20);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+    localStorage.setItem(storageKey('sarathi_ai_conversations', userId), JSON.stringify(trimmed));
   }
 }
 
@@ -74,9 +76,9 @@ export function moveToFolder(conversations: Conversation[], id: string, folderId
 
 // ── Folders ────────────────────────────────────────────────────
 
-export function loadFolders(): ChatFolder[] {
+export function loadFolders(userId: string): ChatFolder[] {
   try {
-    const raw = localStorage.getItem(FOLDERS_KEY);
+    const raw = localStorage.getItem(storageKey('sarathi_ai_folders', userId));
     if (!raw) return [];
     const parsed: ChatFolder[] = JSON.parse(raw);
     return parsed.map((f) => ({ ...f, createdAt: new Date(f.createdAt) }));
@@ -85,9 +87,9 @@ export function loadFolders(): ChatFolder[] {
   }
 }
 
-export function saveFolders(folders: ChatFolder[]): void {
+export function saveFolders(folders: ChatFolder[], userId: string): void {
   try {
-    localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders));
+    localStorage.setItem(storageKey('sarathi_ai_folders', userId), JSON.stringify(folders));
   } catch {}
 }
 
@@ -103,23 +105,23 @@ export function createFolder(name: string): ChatFolder {
 
 // ── Memory ────────────────────────────────────────────────────
 
-export function loadMemory(): Record<string, unknown> {
+export function loadMemory(userId: string): Record<string, unknown> {
   try {
-    const raw = localStorage.getItem(MEMORY_KEY);
+    const raw = localStorage.getItem(storageKey('sarathi_ai_memory', userId));
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
   }
 }
 
-export function saveMemory(data: Record<string, unknown>): void {
+export function saveMemory(data: Record<string, unknown>, userId: string): void {
   try {
-    localStorage.setItem(MEMORY_KEY, JSON.stringify(data));
+    localStorage.setItem(storageKey('sarathi_ai_memory', userId), JSON.stringify(data));
   } catch {}
 }
 
-export function clearMemory(): void {
-  localStorage.removeItem(MEMORY_KEY);
+export function clearMemory(userId: string): void {
+  localStorage.removeItem(storageKey('sarathi_ai_memory', userId));
 }
 
 // ── Export ────────────────────────────────────────────────────
