@@ -1,5 +1,6 @@
 import { User } from '../models/User.js';
 import { AppError } from '../utils/AppError.js';
+import { config } from '../config.js';
 
 /**
  * GET /api/user/profile
@@ -367,7 +368,7 @@ MANDATORY RESPONSE RULES & FORMAT
 5. **Smart Adaptation:** Automatically respond in English, Hindi, or Gujarati matching the user's exact input language.`;
 
 async function getRealGeminiResponse(question, subject, previousDoubts = [], fileContext = '', language = 'en', examMode = false, userLevel = '') {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = config.geminiApiKey;
   if (!apiKey || apiKey.length < 10) {
     console.log('💡 No GEMINI_API_KEY found or key is invalid. Using Senior AI Multi-Agent local engine.');
     return null;
@@ -909,7 +910,7 @@ export async function solveStudentDoubt(req, res) {
   subject = (subject || 'General').trim();
 
   // Validate API Key existence
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = config.geminiApiKey;
   if (!apiKey || apiKey.length < 10) {
     return res.status(500).json({
       success: false,
@@ -1360,7 +1361,7 @@ export async function chatWithAI(req, res) {
   const { message, history, language, fileContext, examMode, userLevel } = req.body;
   if (!message) throw new AppError('Message is required.', 400);
 
-  const apiKey = process.env.GEMINI_API_KEY || '';
+  const apiKey = config.geminiApiKey;
   let resolvedAnswer = null;
 
   // Build enhanced message prompt including file and exam context
@@ -1480,7 +1481,7 @@ export async function chatWithAIStream(req, res) {
 
   req.on('close', () => { try { res.end(); } catch {} });
 
-  const apiKey = process.env.GEMINI_API_KEY || '';
+  const apiKey = config.geminiApiKey;
   let streamedSuccessfully = false;
 
   if (apiKey && apiKey.length > 10) {

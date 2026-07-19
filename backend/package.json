@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "main": "src/index.js",
   "description": "Backend API for Sarthi — auth, user data, and live Government Scheme data sourced from official/public Government of India sources (data.gov.in, myScheme) with local fallback.",
   "scripts": {
     "start": "node src/index.js",

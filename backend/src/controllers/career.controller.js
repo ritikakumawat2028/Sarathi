@@ -1,8 +1,9 @@
 import { AppError } from '../utils/AppError.js';
+import { config } from '../config.js';
 
 // Helper to call Gemini AI Flash model safely
 async function callGeminiAI(prompt, jsonMode = true) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = config.geminiApiKey;
   if (!apiKey || !apiKey.startsWith('AIzaSy')) return null;
 
   const modelsToTry = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-2.0-flash'];

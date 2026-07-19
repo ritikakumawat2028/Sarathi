@@ -3,6 +3,7 @@ import { getSchemes, refreshSchemes } from '../services/schemeSource.service.js'
 import { User } from '../models/User.js';
 import { SchemeHistory } from '../models/SchemeHistory.js';
 import { AppError } from '../utils/AppError.js';
+import { config } from '../config.js';
 
 // Helper to filter schemes with multi-criteria rules
 function filterSchemesList(schemes, query) {
@@ -334,7 +335,7 @@ export async function getAIRecommendations(req, res) {
   } = req.body;
 
   const { schemes } = await getSchemes();
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = config.geminiApiKey;
 
   // Filter top matches heuristically first
   const candidateSchemes = schemes.filter(s => {
@@ -457,7 +458,7 @@ export async function getSchemeAISummary(req, res) {
   const scheme = schemes.find(s => s.id === id);
   if (!scheme) throw new AppError('Scheme not found', 404);
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = config.geminiApiKey;
   if (apiKey) {
     try {
       const prompt = `You are Sarthi. Provide a concise AI Summary, Key Eligibility criteria, and 3 Practical FAQs for the following scheme:

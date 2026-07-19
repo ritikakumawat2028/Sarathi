@@ -33,7 +33,8 @@ export async function connectDB() {
   if (primaryUri) {
     try {
       await mongoose.connect(primaryUri, {
-        serverSelectionTimeoutMS: 3500,
+        serverSelectionTimeoutMS: 10000, // AWS EC2 → Atlas SRV DNS can be slow on first connect
+        connectTimeoutMS: 10000,
       });
       isConnected = true;
       global.dbError = null;

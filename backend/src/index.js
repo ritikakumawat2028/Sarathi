@@ -21,7 +21,21 @@ import jwt from 'jsonwebtoken';
 const app = express();
 
 app.use(helmet());
-app.use(cors({ origin: config.clientOrigin, credentials: true }));
+// Support multiple allowed origins: local dev, EB URL, and CloudFront URL
+const allowedOrigins = [
+  config.clientOrigin,
+  'http://localhost:5173',
+  'http://localhost:3000',
+].filter(Boolean);
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g. Postman, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS: Origin not allowed: ${origin}`));
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '2mb' }));
 app.use(morgan(config.nodeEnv === 'production' ? 'combined' : 'dev'));
 
@@ -33,7 +47,10 @@ const apiLimiter = rateLimit({
 });
 app.use('/api', apiLimiter);
 
-app.get('/health', (_req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
+// Root route — returns 200 so AWS EB health checks (which hit GET /) never get a 404
+const DEPLOY_VERSION = 'v3-' + new Date('2026-07-19').toISOString().slice(0, 10);
+app.get('/', (_req, res) => res.json({ service: 'Sarathi AI Backend', status: 'ok', version: DEPLOY_VERSION, port: config.port, env: config.nodeEnv }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', version: DEPLOY_VERSION, time: new Date().toISOString() }));
 app.use('/api/chat', chatRoutes);
 
 app.use('/api/auth', authRoutes);
@@ -81,7 +98,17 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 // Connect to MongoDB then start server
-connectDB().then(() => {
+// NOTE: We always start the HTTP server regardless of DB connection status.
+// This ensures AWS Elastic Beanstalk health checks on /health always pass.
+// DB connection errors are stored in global.dbError and surfaced via /api/debug.
+async function startServer() {
+  try {
+    await connectDB();
+  } catch (err) {
+    console.error('❌ connectDB threw an unexpected error:', err.message);
+    global.dbError = err.message;
+  }
+
   app.listen(config.port, async () => {
     console.log(`Sarthi API listening on http://localhost:${config.port}`);
     console.log('Warming up government scheme cache (first fetch may take a few seconds)...');
@@ -107,4 +134,6 @@ connectDB().then(() => {
       });
     }
   });
-});
+}
+
+startServer();
