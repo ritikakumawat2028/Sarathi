@@ -63,8 +63,13 @@ app.use('/api/career', careerRoutes);
 // Debug route to verify AWS environment variables
 app.get('/api/debug', async (req, res) => {
   const mongoose = await import('mongoose');
+  let maskedUri = process.env.MONGODB_URI || 'undefined';
+  if (maskedUri !== 'undefined') {
+    maskedUri = maskedUri.replace(/:([^:@]+)@/, ':***@'); // hide password
+  }
   res.json({
     mongodbUriSet: !!process.env.MONGODB_URI,
+    maskedUri,
     mongooseState: mongoose.default.connection.readyState,
     nodeEnv: process.env.NODE_ENV,
     dbError: global.dbError || null
