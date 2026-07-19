@@ -60,6 +60,16 @@ app.use('/api/schemes', schemesRoutes);
 app.use('/api/eligibility', eligibilityRoutes);
 app.use('/api/career', careerRoutes);
 
+// Debug route to verify AWS environment variables
+app.get('/api/debug', async (req, res) => {
+  const mongoose = await import('mongoose');
+  res.json({
+    mongodbUriSet: !!process.env.MONGODB_URI,
+    mongooseState: mongoose.default.connection.readyState,
+    nodeEnv: process.env.NODE_ENV
+  });
+});
+
 app.use(notFoundHandler);
 app.use(errorHandler);
 
