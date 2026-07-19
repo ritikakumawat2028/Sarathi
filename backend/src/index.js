@@ -72,6 +72,7 @@ app.get('/api/debug', async (req, res) => {
     maskedUri,
     mongooseState: mongoose.default.connection.readyState,
     nodeEnv: process.env.NODE_ENV,
+    primaryDbError: global.primaryDbError || null,
     dbError: global.dbError || null
   });
 });
