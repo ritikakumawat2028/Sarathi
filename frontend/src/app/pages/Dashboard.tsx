@@ -140,14 +140,18 @@ export function Dashboard() {
 
   // 2. Real Study Plan Progress based on actual completed / total study tasks
   const calculateStudyProgress = () => {
-    if (!studyPlan || studyPlan.length === 0) return 0;
+    if (!studyPlan || studyPlan.length === 0) {
+      return Math.min(totalActivitiesCount * 5, 45); // Fallback to basic activity proxy
+    }
     const completedTasks = studyPlan.filter((task) => task.completed).length;
     return Math.round((completedTasks / studyPlan.length) * 100);
   };
 
   // 3. Scheme Check Track based on real checks performed
   const calculateSchemeProgress = () => {
-    if (schemeChecksCount === 0 && savedSchemesCount === 0) return 0;
+    if (schemeChecksCount === 0 && savedSchemesCount === 0) {
+       return Math.min(totalActivitiesCount * 3, 30); // Fallback to basic activity proxy
+    }
     return Math.min(schemeChecksCount * 25 + savedSchemesCount * 25, 100);
   };
 
@@ -162,12 +166,14 @@ export function Dashboard() {
       value: calculateStudyProgress(),
       detail: studyPlan.length > 0
         ? `${studyPlan.filter((p) => p.completed).length} of ${studyPlan.length} real study tasks completed`
-        : '0 study tasks completed (add tasks in Study Planner)',
+        : `${totalActivitiesCount > 0 ? 'Learning through general AI chats' : '0 study tasks completed (add tasks in Study Planner)'}`,
     },
     {
       label: 'Government Scheme Eligibility Track',
       value: calculateSchemeProgress(),
-      detail: `${schemeChecksCount} checks & ${savedSchemesCount} saved schemes logged`,
+      detail: (schemeChecksCount === 0 && savedSchemesCount === 0) 
+        ? `${totalActivitiesCount} general activities logged`
+        : `${schemeChecksCount} checks & ${savedSchemesCount} saved schemes logged`,
     },
   ];
 

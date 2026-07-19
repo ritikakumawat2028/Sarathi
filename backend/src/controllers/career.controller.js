@@ -1,37 +1,44 @@
 import { AppError } from '../utils/AppError.js';
 import { config } from '../config.js';
+import { User } from '../models/User.js';
 
 // Helper to call Gemini AI Flash model safely
 async function callGeminiAI(prompt, jsonMode = true) {
   const apiKey = config.geminiApiKey;
-  if (!apiKey || !apiKey.startsWith('AIzaSy')) return null;
+  if (!apiKey) {
+    console.warn('Gemini API key is not configured.');
+    return null;
+  }
 
-  const modelsToTry = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-2.0-flash'];
+  const modelsToTry = ['gemini-flash-latest', 'gemini-3.5-flash', 'gemini-2.5-flash-lite', 'gemini-pro-latest'];
   for (const modelName of modelsToTry) {
     try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: jsonMode ? { responseMimeType: 'application/json' } : {}
-          })
-        }
-      );
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: jsonMode ? { responseMimeType: 'application/json' } : {}
+        })
+      });
 
       if (response.ok) {
         const data = await response.json();
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (text) {
+          console.log(`✅ Gemini AI call succeeded using model: ${modelName}`);
           return jsonMode ? JSON.parse(text) : text;
         }
+      } else {
+        const errText = await response.text();
+        console.warn(`⚠️ Gemini API (${modelName}) returned status ${response.status}:`, errText);
       }
     } catch (err) {
-      // try next model
+      console.warn(`⚠️ Gemini API (${modelName}) error:`, err.message);
     }
   }
+  console.error('❌ All Gemini AI models failed or timed out.');
   return null;
 }
 
@@ -155,16 +162,19 @@ Return strictly a JSON object:
     return res.json(aiEval);
   }
 
-  // Fallback evaluation
+  // Dynamic fallback evaluation based on answer content
   const wordCount = (answer || '').split(/\s+/).filter(Boolean).length;
-  const score = Math.min(95, Math.max(65, wordCount > 30 ? 85 : 72));
+  const score = Math.min(95, Math.max(50, wordCount > 30 ? 85 : (wordCount > 10 ? 72 : 55)));
+  const shortAnswer = wordCount < 20;
 
   res.json({
     confidenceScore: score,
-    performanceAnalysis: `Your response demonstrates good familiarity with key concepts, though adding specific real-world metrics or architecture trade-offs would make it even stronger.`,
-    strengths: ['Clear communication flow', 'Relevance to the prompt'],
-    improvementTips: ['Quantify your impact with percentages or time saved', 'Explicitly mention edge-case handling'],
-    idealAnswerSnippet: `Begin with a direct 1-sentence summary, explain your architectural reasoning, and finish with measurable project results.`
+    performanceAnalysis: shortAnswer 
+      ? `Your answer "${(answer || '').substring(0, 50)}..." is a bit too brief. Elaborating on key concepts and providing real-world examples would make it stronger.`
+      : `Your response demonstrates good familiarity with key concepts related to the question. You provided a solid explanation, though adding specific real-world metrics or architecture trade-offs would make it even stronger.`,
+    strengths: shortAnswer ? ['Direct and to the point'] : ['Clear communication flow', 'Good detail and relevance to the prompt'],
+    improvementTips: shortAnswer ? ['Provide more details', 'Use the STAR method for behavioral parts'] : ['Quantify your impact with percentages or time saved', 'Explicitly mention edge-case handling'],
+    idealAnswerSnippet: `Begin with a direct 1-sentence summary, explain your reasoning, and finish with measurable project results.`
   });
 }
 
@@ -191,14 +201,19 @@ Return strictly a JSON object:
     return res.json(aiReview);
   }
 
-  // Fallback ATS analysis
+  // Dynamic Fallback ATS analysis based on resume input
+  const wordCount = (resumeText || '').split(/\s+/).filter(Boolean).length;
+  const score = Math.min(95, Math.max(50, wordCount > 200 ? 88 : 65));
+  const hasReact = (resumeText || '').toLowerCase().includes('react');
+  const hasNode = (resumeText || '').toLowerCase().includes('node');
+  
   res.json({
-    resumeScore: 84,
-    atsScore: 88,
-    grammarFeedback: 'Excellent active voice formatting. No grammatical errors detected.',
-    keywordSuggestions: ['Full Stack Development', 'REST APIs', 'Cloud Computing', 'Git Workflow', 'Agile/Scrum', 'CI/CD Pipelines'],
-    missingSkills: ['Kubernetes Deployment', 'Performance Optimization Metrics', 'End-to-End Testing (Cypress/Playwright)'],
-    improvedSummary: `Results-driven ${targetRole} with proven expertise in building modern, scalable web applications using React, Node.js, and cloud databases. Passionate about AI integration, high-performance architecture, and delivering user-centric solutions.`
+    resumeScore: score - 5,
+    atsScore: score,
+    grammarFeedback: wordCount > 50 ? 'Good overall formatting and grammar detected in your content.' : 'Your resume is very short. Consider adding more details and bullet points.',
+    keywordSuggestions: hasReact ? ['Advanced React Patterns', 'GraphQL', 'Next.js'] : ['React', 'Full Stack Development', 'Cloud Computing', 'Git Workflow', 'Agile/Scrum', 'CI/CD Pipelines'],
+    missingSkills: hasNode ? ['Kubernetes Deployment', 'Performance Optimization'] : ['Node.js', 'API Design', 'End-to-End Testing (Cypress/Playwright)'],
+    improvedSummary: `Results-driven ${targetRole} with proven expertise in building modern solutions. ${wordCount < 100 ? 'Needs more detailed project experience.' : 'Strong background in relevant technologies and user-centric solutions.'}`
   });
 }
 
@@ -248,21 +263,70 @@ Return strictly a JSON object:
     return res.json(aiRoadmap);
   }
 
-  // Rich structured fallback roadmap
+  // Dynamic roadmap logic based on role
+  let domain = 'Software Engineering';
+  let projects = [];
+  let certifications = [];
+  let salary = '₹6 LPA - ₹18 LPA';
+  let companies = ['TCS', 'Infosys', 'Wipro', 'Accenture', 'Tech Startups'];
+  
+  const lowerRole = targetRole.toLowerCase();
+  
+  if (lowerRole.includes('data') || lowerRole.includes('machine') || lowerRole.includes('ai')) {
+    domain = 'Data & AI';
+    projects = [
+      { name: 'Predictive Analytics Dashboard', tech: 'Python, Pandas, Scikit-Learn' },
+      { name: 'NLP Chatbot for Customer Support', tech: 'TensorFlow, React, FastAPI' }
+    ];
+    certifications = ['Google Data Analytics Certificate', 'AWS Machine Learning Specialty', 'IBM Data Science'];
+    salary = '₹8 LPA - ₹24 LPA';
+    companies = ['Google India', 'Microsoft India', 'Amazon', 'Mu Sigma', 'Fractal Analytics'];
+  } else if (lowerRole.includes('cyber') || lowerRole.includes('security')) {
+    domain = 'Cyber Security';
+    projects = [
+      { name: 'Vulnerability Scanner Tool', tech: 'Python, Nmap, Bash' },
+      { name: 'Secure Authentication System', tech: 'Node.js, JWT, OWASP Guidelines' }
+    ];
+    certifications = ['CompTIA Security+', 'Certified Ethical Hacker (CEH)', 'CISSP'];
+    salary = '₹7 LPA - ₹20 LPA';
+    companies = ['PwC', 'Deloitte', 'CrowdStrike', 'Cisco', 'IBM Security'];
+  } else if (lowerRole.includes('full stack') || lowerRole.includes('web')) {
+    domain = 'Full Stack Development';
+    projects = [
+      { name: 'E-commerce Platform', tech: 'React, Node.js, MongoDB, Stripe' },
+      { name: 'Real-time Chat Application', tech: 'Next.js, Socket.io, PostgreSQL' }
+    ];
+    certifications = ['Meta Front-End Developer', 'AWS Certified Developer', 'Full Stack Open'];
+    salary = '₹6 LPA - ₹22 LPA';
+    companies = ['Flipkart', 'Zomato', 'Swiggy', 'Amazon', 'Tech Startups'];
+  } else {
+    // Default / Python & AI Engineer
+    projects = [
+      { name: 'Intelligent Career Coach Platform', tech: 'React, Node.js, Gemini AI, MongoDB' },
+      { name: 'Government Schemes Smart Portal', tech: 'Full Stack Web, Cloud Cache, Microservices' }
+    ];
+    certifications = ['Google Cloud Certified Professional', 'AWS Solutions Architect', 'NPTEL CS Certificate'];
+    salary = '₹6 LPA - ₹22 LPA';
+    companies = ['Google India', 'Microsoft India', 'Infosys', 'Wipro', 'Tech Startups'];
+  }
+
+  // Adjust timing based on level
+  const speed = currentLevel.toLowerCase() === 'beginner' ? 'Foundational' : (currentLevel.toLowerCase() === 'advanced' ? 'Accelerated' : 'Standard');
+
   res.json({
     role: targetRole,
     months: [
       {
-        month: 'Month 1: Foundation & Advanced Core Mechanics',
+        month: `Month 1: ${speed} Core Mechanics for ${domain}`,
         weeks: [
-          { title: 'Week 1-2: Clean Code & Advanced Syntax', description: 'Deep dive into object-oriented programming, async operations, and robust error handling.' },
-          { title: 'Week 3-4: Modern API & Database Engineering', description: 'Design high-performance RESTful APIs and optimize SQL/NoSQL schema indexes.' }
+          { title: `Week 1-2: Core ${domain} Principles`, description: `Deep dive into essential concepts, advanced syntax, and robust error handling for ${targetRole}.` },
+          { title: 'Week 3-4: Modern Architecture & Database Engineering', description: 'Design high-performance systems and optimize data storage.' }
         ]
       },
       {
-        month: 'Month 2: AI Capabilities & Cloud Architecture',
+        month: `Month 2: ${domain} Capabilities & Cloud Architecture`,
         weeks: [
-          { title: 'Week 5-6: Generative AI & LLM Application Building', description: 'Integrate Google Gemini APIs, vector search, and automated reasoning pipelines.' },
+          { title: `Week 5-6: Building ${domain} Applications`, description: `Integrate industry-standard APIs, advanced search, and automated reasoning pipelines.` },
           { title: 'Week 7-8: DevOps, Docker & Cloud Deployment', description: 'Configure automated CI/CD builds and monitor production uptime.' }
         ]
       },
@@ -274,13 +338,10 @@ Return strictly a JSON object:
         ]
       }
     ],
-    recommendedProjects: [
-      { name: 'Intelligent AI Career Coach & ATS Analyzer', tech: 'React, Node.js, Gemini AI, MongoDB' },
-      { name: 'National Government Schemes Smart Portal', tech: 'Full Stack Web, Cloud Cache, Microservices' }
-    ],
-    certificationsToTarget: ['Google Cloud Certified Professional', 'NPTEL Computer Science Certificate', 'AWS Solutions Architect'],
-    expectedSalary: '₹6 LPA - ₹22 LPA',
-    hiringCompanies: ['Google India', "Microsoft India", 'Infosys', 'Wipro', 'Accenture', 'Tech Startups']
+    recommendedProjects: projects,
+    certificationsToTarget: certifications,
+    expectedSalary: salary,
+    hiringCompanies: companies
   });
 }
 
@@ -289,15 +350,54 @@ Return strictly a JSON object:
 export async function reviewPortfolio(req, res) {
   const { githubUrl, portfolioUrl, linkedinUrl, projects = [] } = req.body;
 
+  let score = 50;
+  let strengths = [];
+  let suggestions = [];
+
+  // Initial checks
+  if (githubUrl && githubUrl.includes('github.com')) score += 15;
+  if (linkedinUrl && linkedinUrl.includes('linkedin.com')) score += 15;
+  if (portfolioUrl && portfolioUrl.includes('http')) score += 20;
+
+  // Use AI if we have some data
+  if (githubUrl || linkedinUrl || portfolioUrl) {
+    const prompt = `As a strict Senior Technical Recruiter, review this candidate's digital footprint.
+GitHub: ${githubUrl || 'None provided'}
+LinkedIn: ${linkedinUrl || 'None provided'}
+Portfolio: ${portfolioUrl || 'None provided'}
+
+Return strictly a JSON object:
+{
+  "portfolioScore": number (${score} as base, adjust dynamically up to 100 based on presence of URLs),
+  "summary": "1-sentence brutally honest summary of their digital footprint",
+  "suggestions": [{"area": "string", "tip": "string"}],
+  "strengths": ["string", "string"]
+}`;
+
+    const aiReview = await callGeminiAI(prompt, true);
+    if (aiReview && typeof aiReview.portfolioScore === 'number') {
+      return res.json(aiReview);
+    }
+  }
+
+  // Fallback if AI fails or no URLs provided
+  if (!githubUrl) suggestions.push({ area: 'GitHub Profile', tip: 'CRITICAL: You are missing a GitHub URL. Recruiters want to see your code. Add your GitHub profile immediately.' });
+  else { strengths.push('Active GitHub presence identified.'); suggestions.push({ area: 'GitHub Profile', tip: 'Add detailed README.md files with architecture diagrams and live demo links.' }); }
+
+  if (!linkedinUrl) suggestions.push({ area: 'LinkedIn Optimization', tip: 'CRITICAL: No LinkedIn URL provided. A strong LinkedIn profile is essential for modern networking.' });
+  else { strengths.push('Professional LinkedIn network established.'); suggestions.push({ area: 'LinkedIn Optimization', tip: 'Include quantifiable achievements in your headline.' }); }
+
+  if (!portfolioUrl) suggestions.push({ area: 'Live Portfolio Website', tip: 'Consider building a personal portfolio website to stand out from other candidates.' });
+  else { strengths.push('Live portfolio website showcases your work practically.'); suggestions.push({ area: 'Live Portfolio Website', tip: 'Ensure your top 3 projects have interactive walkthroughs.' }); }
+
+  if (score < 60) strengths.push('Starting to build digital footprint.');
+  else if (score > 85) { strengths.push('Modern tech stack utilization'); strengths.push('Clean UI/UX design presentation'); }
+
   res.json({
-    portfolioScore: 89,
-    summary: 'Strong digital presence with well-documented code repositories and live web applications.',
-    suggestions: [
-      { area: 'GitHub Profile', tip: 'Add detailed README.md files with architecture diagrams and live demo links for all top repositories.' },
-      { area: 'LinkedIn Optimization', tip: 'Include quantifiable achievements in your headline (e.g. "Full Stack Engineer | Built applications with 10k+ interactions").' },
-      { area: 'Live Portfolio Website', tip: 'Highlight your top 3 projects with interactive walkthroughs and client/user testimonials.' }
-    ],
-    strengths: ['Modern tech stack utilization (React, Node, AI APIs)', 'Clean UI/UX design presentation']
+    portfolioScore: score,
+    summary: score > 80 ? 'Strong digital presence with well-documented profiles.' : (score > 60 ? 'Good foundation, but your digital profiles need more optimization.' : 'Your digital footprint is currently weak. Follow the suggestions to improve your visibility.'),
+    suggestions,
+    strengths
   });
 }
 
@@ -1163,22 +1263,40 @@ export async function getEvents(req, res) {
 // ── 11. Comprehensive Career Analytics Dashboard ─────────────────────────────
 
 export async function getAnalytics(req, res) {
+  const user = req.userId ? await User.findById(req.userId) : null;
+  
+  let activitiesCount = 0;
+  let streakDays = 0;
+  let readinessScore = 55;
+  let coursesCompleted = 0;
+  let appsSent = 0;
+  let interviewsCompleted = 0;
+
+  if (user) {
+    activitiesCount = user.activityLog ? user.activityLog.length : 0;
+    streakDays = Math.min(activitiesCount, 14); // Simulating streak based on activity
+    readinessScore = Math.min(55 + (activitiesCount * 2), 98);
+    coursesCompleted = Math.floor(activitiesCount / 5);
+    appsSent = Math.floor(activitiesCount / 3);
+    interviewsCompleted = Math.floor(activitiesCount / 10);
+  }
+
   res.json({
-    careerReadinessScore: 84,
-    readinessLevel: 'Job Ready (Top 15% Profile)',
+    careerReadinessScore: readinessScore,
+    readinessLevel: readinessScore > 80 ? 'Job Ready (Top 15% Profile)' : 'Developing Core Skills',
     skillGrowth: [
-      { month: 'Jan', technical: 65, soft: 70 },
-      { month: 'Feb', technical: 72, soft: 75 },
-      { month: 'Mar', technical: 78, soft: 80 },
-      { month: 'Apr', technical: 84, soft: 85 }
+      { month: 'Jan', technical: Math.max(30, readinessScore - 15), soft: Math.max(40, readinessScore - 10) },
+      { month: 'Feb', technical: Math.max(35, readinessScore - 10), soft: Math.max(45, readinessScore - 5) },
+      { month: 'Mar', technical: Math.max(40, readinessScore - 5), soft: Math.max(50, readinessScore - 2) },
+      { month: 'Apr', technical: readinessScore, soft: Math.min(readinessScore + 5, 100) }
     ],
-    coursesCompleted: 4,
-    applicationsSent: 12,
-    interviewsCompleted: 3,
-    resumeScore: 88,
-    learningStreakDays: 14,
-    weeklyProgressPercentage: 92,
-    topStrengths: ['Problem Solving', 'React & TypeScript', 'Clear Communication'],
-    nextRecommendedAction: 'Complete 1 Mock Technical Interview on AI Integration'
+    coursesCompleted: coursesCompleted,
+    applicationsSent: appsSent,
+    interviewsCompleted: interviewsCompleted,
+    resumeScore: Math.min(50 + (activitiesCount * 3), 95),
+    learningStreakDays: streakDays,
+    weeklyProgressPercentage: Math.min(10 + (activitiesCount * 5), 100),
+    topStrengths: ['Problem Solving', 'Adaptability', 'Continuous Learning'],
+    nextRecommendedAction: activitiesCount < 5 ? 'Complete your Profile & Study Plan' : 'Take a Mock Technical Interview'
   });
 }

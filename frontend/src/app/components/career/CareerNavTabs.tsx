@@ -33,7 +33,6 @@ export function CareerNavTabs({ activeTab, onTabChange }: CareerNavTabsProps) {
     { id: 'resume', nameEn: 'ATS Resume Builder', nameHi: 'ATS रेज़्यूमे', icon: FileText, isNew: true },
     { id: 'certifications', nameEn: 'Certifications', nameHi: 'प्रमाणपत्र', icon: CheckCircle, isNew: true },
     { id: 'roadmap', nameEn: 'Learning Roadmap', nameHi: 'लर्निंग रोडमैप', icon: Navigation, isNew: true },
-    { id: 'coach', nameEn: 'AI Career Coach', nameHi: 'AI करियर कोच', icon: Sparkles, isAI: true },
     { id: 'analytics', nameEn: 'Career Analytics', nameHi: 'करियर विश्लेषण', icon: BarChart3, isNew: true },
     { id: 'portfolio', nameEn: 'Portfolio Review', nameHi: 'पोर्टफोलियो समीक्षा', icon: Github, isNew: true },
     { id: 'scholarships', nameEn: 'Scholarships', nameHi: 'छात्रवृत्ति', icon: GraduationCap, isNew: true },
@@ -43,7 +42,7 @@ export function CareerNavTabs({ activeTab, onTabChange }: CareerNavTabsProps) {
   return (
     <div className="bg-white border-b sticky top-0 z-30 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-1.5 py-3 overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-1.5 py-3 overflow-x-auto pb-3 visible-scrollbar">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;

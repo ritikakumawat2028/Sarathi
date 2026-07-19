@@ -1,4 +1,4 @@
-﻿@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is(.dark *));
 
 /* ==========================================================================
    SARTHI - NATIONAL GOVERNMENT DIGITAL PORTAL DESIGN SYSTEM
@@ -180,4 +180,23 @@ td {
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Visible Scrollbar for Tabs */
+.visible-scrollbar::-webkit-scrollbar {
+  height: 6px;
+}
+.visible-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.visible-scrollbar::-webkit-scrollbar-thumb {
+  background: #CBD5E1; 
+  border-radius: 4px;
+}
+.visible-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8; 
+}
+.visible-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #CBD5E1 transparent;
 }

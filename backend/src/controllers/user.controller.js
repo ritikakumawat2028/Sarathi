@@ -410,7 +410,7 @@ async function getRealGeminiResponse(question, subject, previousDoubts = [], fil
       parts: [{ text: promptText }]
     });
 
-    const modelsToTry = ['gemini-3-flash-preview', 'gemini-3.1-flash-lite', 'gemma-4-31b-it', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+    const modelsToTry = ['gemini-flash-latest', 'gemini-3.5-flash', 'gemini-2.5-flash-lite', 'gemini-pro-latest'];
     for (const modelName of modelsToTry) {
       try {
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
@@ -1395,7 +1395,7 @@ export async function chatWithAI(req, res) {
       const classification = classifyQuestionIntentAndSubject(message, '');
       const systemPrompt = `[ROUTING CLASSIFICATION: Expert = ${classification.expert}, Subject = ${classification.subject}, Intent = ${classification.intent}]\nYou MUST act as ${classification.expert} and strictly obey ${classification.expert}'s mandatory response format and rules.\n\n${STUDENT_TUTOR_SYSTEM_PROMPT}\n\nAlways reply accurately in the user's preferred language (${language || 'en'}).`;
 
-      const modelsToTry = ['gemini-3-flash-preview', 'gemini-3.1-flash-lite', 'gemma-4-31b-it', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+      const modelsToTry = ['gemini-flash-latest', 'gemini-3.5-flash', 'gemini-2.5-flash-lite', 'gemini-pro-latest'];
       for (const modelName of modelsToTry) {
         try {
           const response = await fetch(
@@ -1497,7 +1497,7 @@ export async function chatWithAIStream(req, res) {
     const classification = classifyQuestionIntentAndSubject(message, '');
     const systemPrompt = `[ROUTING CLASSIFICATION: Expert = ${classification.expert}, Subject = ${classification.subject}, Intent = ${classification.intent}]\nYou MUST act as ${classification.expert} and strictly obey ${classification.expert}'s mandatory response format and rules.\n\n${STUDENT_TUTOR_SYSTEM_PROMPT}\n\nAlways reply accurately in the user's preferred language (${language || 'en'}).`;
 
-    for (const modelName of ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-pro']) {
+    for (const modelName of ['gemini-flash-latest', 'gemini-3.5-flash', 'gemini-2.5-flash-lite', 'gemini-pro-latest']) {
       try {
         const geminiRes = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?alt=sse&key=${apiKey}`,
