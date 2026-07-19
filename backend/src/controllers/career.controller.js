@@ -799,10 +799,60 @@ export async function getCourses(req, res) {
       prerequisites: 'No prior coding experience needed.',
       recommendationReason: 'Perfect first step to coding for complete beginners — free, beginner-friendly & job-relevant.',
       syllabus: [
-        'Module 1: Python Setup, Variables, Data Types & Operators',
-        'Module 2: Conditionals, Loops & Functions',
-        'Module 3: Lists, Tuples, Dictionaries & File I/O',
-        'Module 4: Mini Projects — Calculator, Quiz App & more'
+        'Module 1: Python syntax & variables',
+        'Module 2: Data structures & Object-oriented programming',
+        'Module 3: File handling & modules',
+        'Module 4: Final Python scripting project'
+      ]
+    },
+    {
+      id: 21,
+      title: 'freeCodeCamp — Responsive Web Design Certification',
+      provider: 'freeCodeCamp',
+      platform: 'freeCodeCamp',
+      duration: '300 hours',
+      effort: 'Self-paced',
+      level: 'Beginner',
+      price: '100% Free with Certificate',
+      rating: 4.9,
+      type: 'Online',
+      hasCertificate: true,
+      category: 'Software Engineering',
+      language: 'English',
+      enrollUrl: 'https://www.freecodecamp.org/learn/responsive-web-design/',
+      accreditation: 'freeCodeCamp Developer Certification',
+      prerequisites: 'No prerequisites. Open to all.',
+      recommendationReason: 'Globally recognized free certification to master HTML, CSS, and modern responsive design layouts.',
+      syllabus: [
+        'Module 1: Basic HTML and HTML5',
+        'Module 2: Basic CSS and Applied Visual Design',
+        'Module 3: CSS Flexbox and CSS Grid',
+        'Module 4: Responsive Web Design Projects and Certification'
+      ]
+    },
+    {
+      id: 22,
+      title: 'freeCodeCamp — JavaScript Algorithms and Data Structures',
+      provider: 'freeCodeCamp',
+      platform: 'freeCodeCamp',
+      duration: '300 hours',
+      effort: 'Self-paced',
+      level: 'Intermediate',
+      price: '100% Free with Certificate',
+      rating: 4.9,
+      type: 'Online',
+      hasCertificate: true,
+      category: 'Software Engineering',
+      language: 'English',
+      enrollUrl: 'https://www.freecodecamp.org/learn/javascript-algorithms-and-data-structures/',
+      accreditation: 'freeCodeCamp Developer Certification',
+      prerequisites: 'Basic HTML/CSS knowledge recommended.',
+      recommendationReason: 'The absolute best free course to master JavaScript syntax, algorithms, and technical interview logic.',
+      syllabus: [
+        'Module 1: Basic JavaScript and ES6',
+        'Module 2: Regular Expressions and Debugging',
+        'Module 3: Basic Data Structures and Object Oriented Programming',
+        'Module 4: Functional Programming and Algorithm Scripting Projects'
       ]
     }
   ];
