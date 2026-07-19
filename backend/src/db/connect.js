@@ -33,10 +33,12 @@ export async function connectDB() {
         serverSelectionTimeoutMS: 3500,
       });
       isConnected = true;
+      global.dbError = null;
       console.log('✅ MongoDB connected successfully to primary cluster:', mongoose.connection.host);
       return;
     } catch (err) {
       console.warn('⚠️ Primary MongoDB cluster connection failed (' + err.message + '). Automatically falling back to local database...');
+      global.dbError = err.message;
     }
   }
 
@@ -48,9 +50,11 @@ export async function connectDB() {
         serverSelectionTimeoutMS: 3000,
       });
       isConnected = true;
+      global.dbError = null;
       console.log('✅ MongoDB connected successfully to local fallback:', mongoose.connection.host);
       return;
     } catch (localErr) {
+      global.dbError = localErr.message;
       // try next fallback
     }
   }

@@ -66,7 +66,8 @@ app.get('/api/debug', async (req, res) => {
   res.json({
     mongodbUriSet: !!process.env.MONGODB_URI,
     mongooseState: mongoose.default.connection.readyState,
-    nodeEnv: process.env.NODE_ENV
+    nodeEnv: process.env.NODE_ENV,
+    dbError: global.dbError || null
   });
 });
 
