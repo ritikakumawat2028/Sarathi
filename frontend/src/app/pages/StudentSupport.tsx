@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useLanguage } from '@/app/context/LanguageContext';
 import { useAuth } from '@/app/context/AuthContext';
@@ -190,7 +190,7 @@ export function StudentSupport() {
   // Delete Plan Item
   const handleDeletePlan = async (planId: string) => {
     try {
-      const res = await api.delete<{ studyPlans: StudyPlanItem[] }>(`/user/study-plans/${planId}`);
+      const res = await api.del<{ studyPlans: StudyPlanItem[] }>(`/user/study-plans/${planId}`);
       setStudyPlan(res.studyPlans || []);
       toast.success('Plan deleted');
       fetchStats();

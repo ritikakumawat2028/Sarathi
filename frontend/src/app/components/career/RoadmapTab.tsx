@@ -22,6 +22,8 @@ export function RoadmapTab() {
   const [roadmap, setRoadmap] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const [initialLoaded, setInitialLoaded] = useState(false);
+
   const generateRoadmap = async () => {
     setLoading(true);
     try {
@@ -38,7 +40,24 @@ export function RoadmapTab() {
   };
 
   useEffect(() => {
-    generateRoadmap();
+    async function initRoadmap() {
+      if (!initialLoaded) {
+        setLoading(true);
+        try {
+          const res = await api.get<any>('/career/roadmap');
+          if (res?.roadmap) {
+            setRoadmap(res.roadmap);
+            if (res.roadmap.role) setTargetRole(res.roadmap.role);
+            setLoading(false);
+            setInitialLoaded(true);
+            return;
+          }
+        } catch {}
+        setInitialLoaded(true);
+      }
+      generateRoadmap();
+    }
+    initRoadmap();
   }, [targetRole, currentLevel]);
 
   return (

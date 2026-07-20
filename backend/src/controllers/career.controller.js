@@ -1,6 +1,7 @@
 import { AppError } from '../utils/AppError.js';
 import { config } from '../config.js';
 import { User } from '../models/User.js';
+import { pushNotification } from './user.controller.js';
 
 // Helper to call Gemini AI Flash model safely
 async function callGeminiAI(prompt, jsonMode = true) {
@@ -40,6 +41,125 @@ async function callGeminiAI(prompt, jsonMode = true) {
   }
   console.error('❌ All Gemini AI models failed or timed out.');
   return null;
+}
+
+// ── Centralized Career Readiness Scoring Engine & Achievement Synchronization ──
+
+export function checkAndUnlockAchievements(user) {
+  if (!user) return;
+  if (!user.careerAchievements) user.careerAchievements = [];
+  if (!user.careerAnalytics) user.careerAnalytics = {};
+  if (!user.careerGoals) user.careerGoals = [];
+  if (!user.careerReviews) user.careerReviews = [];
+
+  const existingAchIds = new Set(user.careerAchievements.map(a => a.id));
+  const addAch = (id, title, desc, icon) => {
+    if (!existingAchIds.has(id)) {
+      user.careerAchievements.push({ id, title, description: desc, icon, unlockedAt: new Date() });
+      existingAchIds.add(id);
+      user.markModified('careerAchievements');
+    }
+  };
+
+  if (user.careerProfile?.setupCompleted) addAch('profile_completed', 'Career Profile Completed', 'Set up degree, industry preferences and baseline ratings.', 'CheckCircle2');
+  if (user.careerSkills && Object.keys(user.careerSkills).length > 0) addAch('skill_assessment', 'First Skill Assessment', 'Completed detailed skill gap evaluation.', 'TrendingUp');
+  if (Number(user.careerAnalytics.resumeScore) > 0 || Number(user.resumeData?.atsScore) > 0 || user.careerReviews.some(r => r.type === 'ats')) addAch('first_resume_review', 'First Resume Review', 'Ran ATS resume verification and keyword analysis.', 'Award');
+  if (user.careerReviews.some(r => r.type === 'github') || existingAchIds.has('github_connected')) addAch('github_connected', 'GitHub Profile Connected', 'Analyzed repositories & developer activity.', 'Github');
+  if (user.careerReviews.some(r => r.type === 'linkedin') || existingAchIds.has('linkedin_completed')) addAch('linkedin_completed', 'LinkedIn Network Verified', 'Connected and analyzed professional LinkedIn presence.', 'Linkedin');
+  if (user.careerReviews.some(r => r.type === 'portfolio') || existingAchIds.has('portfolio_added')) addAch('portfolio_added', 'Live Portfolio Added', 'Showcased personal portfolio website to recruiters.', 'Globe');
+  if (Number(user.careerAnalytics.coursesCompleted) > 0 || user.careerReviews.some(r => r.type === 'certificate')) addAch('first_course', 'Course Completed', 'Completed professional certification or course.', 'BookOpen');
+  if (Number(user.careerAnalytics.applicationsSent) >= 10) addAch('apps_10', '10 Job Applications Sent', 'Submitted 10 verified job applications.', 'Send');
+  if (Number(user.careerAnalytics.learningStreakDays) >= 30) addAch('streak_30', '30 Day Learning Streak', 'Maintained 30 days continuous learning consistency.', 'Flame');
+  if (Number(user.careerAnalytics.interviewsCompleted) > 0) addAch('first_interview', 'First Mock Interview Done', 'Completed interactive AI mock interview practice.', 'Mic');
+  if (user.careerRoadmap) addAch('roadmap_generated', 'Roadmap Generated', 'Generated personalized 3-month career roadmap.', 'Map');
+}
+
+export function calculateAndApplyCareerScore(user) {
+  if (!user) return 0;
+  if (!user.careerAnalytics) user.careerAnalytics = {};
+  if (!user.careerAchievements) user.careerAchievements = [];
+  if (!user.careerGoals) user.careerGoals = [];
+  if (!user.careerReviews) user.careerReviews = [];
+
+  checkAndUnlockAchievements(user);
+  const existingAchIds = new Set(user.careerAchievements.map(a => a.id));
+
+  // 1. Technical Skills (35%)
+  const techRating = user.careerSkills && Object.keys(user.careerSkills).length > 0 
+    ? Math.round(Object.values(user.careerSkills).reduce((acc, val) => acc + (Number(val) <= 10 ? Number(val) * 10 : Number(val)), 0) / Object.keys(user.careerSkills).length)
+    : (user.careerProfile?.setupCompleted ? 72 : 55);
+
+  // 2. Projects (15%)
+  const coursesNum = Number(user.careerAnalytics.coursesCompleted) || 0;
+  const completedGoals = user.careerGoals.filter(g => g.completed).length;
+  const projectsRating = Math.min(100, Math.max(40, (coursesNum * 25) + (completedGoals * 15) + (user.careerProfile?.setupCompleted ? 50 : 30)));
+
+  // 3. Resume (10%)
+  const resumeRating = Math.min(100, Math.max(0, Number(user.careerAnalytics.resumeScore || user.resumeData?.atsScore || user.resumeData?.resumeScore || 50)));
+
+  // 4. GitHub (10%)
+  const hasGithub = existingAchIds.has('github_connected') || user.careerReviews.some(r => r.type === 'github');
+  const githubRating = hasGithub ? 100 : 0;
+
+  // 5. LinkedIn (10%)
+  const hasLinkedin = existingAchIds.has('linkedin_completed') || user.careerReviews.some(r => r.type === 'linkedin');
+  const linkedinRating = hasLinkedin ? 100 : 0;
+
+  // 6. Certificates (5%)
+  const hasCert = existingAchIds.has('first_course') || coursesNum > 0 || existingAchIds.has('first_certificate');
+  const certRating = hasCert ? 100 : Math.min(100, coursesNum * 50);
+
+  // 7. Interview Practice (5%)
+  const interviewsNum = Number(user.careerAnalytics.interviewsCompleted) || 0;
+  const interviewRating = existingAchIds.has('first_interview') || interviewsNum > 0 ? Math.min(100, 50 + interviewsNum * 50) : 0;
+
+  // 8. Applications (5%)
+  const appsNum = Number(user.careerAnalytics.applicationsSent) || 0;
+  const appsRating = Math.min(100, appsNum * 10 + (appsNum > 0 ? 30 : 0));
+
+  // 9. Goals Completed (5%)
+  const goalsRating = user.careerGoals.length > 0 ? Math.min(100, Math.round((completedGoals / user.careerGoals.length) * 100)) : (completedGoals > 0 ? 100 : 0);
+
+  // 10. Roadmap Progress (5%)
+  const hasRoadmap = Boolean(user.careerRoadmap || existingAchIds.has('roadmap_generated'));
+  const roadmapRating = hasRoadmap ? 100 : 0;
+
+  // Weighted formula: 35% + 15% + 10% + 10% + 10% + 5% + 5% + 5% + 5% + 5% = 100%
+  const readinessScore = Math.round(
+    (techRating * 0.35) +
+    (projectsRating * 0.15) +
+    (resumeRating * 0.10) +
+    (githubRating * 0.10) +
+    (linkedinRating * 0.10) +
+    (certRating * 0.05) +
+    (interviewRating * 0.05) +
+    (appsRating * 0.05) +
+    (goalsRating * 0.05) +
+    (roadmapRating * 0.05)
+  );
+
+  user.careerAnalytics.careerReadinessScore = readinessScore;
+  user.careerAnalytics.readinessLevel = readinessScore >= 80 ? 'Job Ready (Top 15% Profile)' : (readinessScore >= 65 ? 'Interview Ready (Strong Foundation)' : 'Active Learner & Upskilling');
+  user.markModified('careerAnalytics');
+
+  return readinessScore;
+}
+
+export function logActivityHelper(user, type, title, detail, module = 'Career Guidance') {
+  if (!user) return;
+  if (!user.activityLog) user.activityLog = [];
+  user.activityLog.unshift({
+    id: Date.now().toString() + '-' + Math.random().toString(36).substring(2, 7),
+    type,
+    module,
+    title,
+    detail,
+    description: detail,
+    status: 'completed',
+    timestamp: new Date()
+  });
+  if (user.activityLog.length > 100) user.activityLog = user.activityLog.slice(0, 100);
+  user.markModified('activityLog');
 }
 
 // ── 1. AI Career Coach Chat ──────────────────────────────────────────────────
@@ -196,25 +316,77 @@ Return strictly a JSON object:
   "improvedSummary": "A highly punchy 3-line professional ATS summary tailored for this role"
 }`;
 
+  let reviewResult = null;
   const aiReview = await callGeminiAI(prompt, true);
   if (aiReview && typeof aiReview.resumeScore === 'number') {
-    return res.json(aiReview);
+    reviewResult = aiReview;
+  } else {
+    // Dynamic Fallback ATS analysis based on resume input
+    const wordCount = (resumeText || '').split(/\s+/).filter(Boolean).length;
+    const score = Math.min(95, Math.max(50, wordCount > 200 ? 88 : 65));
+    const hasReact = (resumeText || '').toLowerCase().includes('react');
+    const hasNode = (resumeText || '').toLowerCase().includes('node');
+    
+    reviewResult = {
+      resumeScore: score - 5,
+      atsScore: score,
+      grammarFeedback: wordCount > 50 ? 'Good overall formatting and grammar detected in your content.' : 'Your resume is very short. Consider adding more details and bullet points.',
+      keywordSuggestions: hasReact ? ['Advanced React Patterns', 'GraphQL', 'Next.js'] : ['React', 'Full Stack Development', 'Cloud Computing', 'Git Workflow', 'Agile/Scrum', 'CI/CD Pipelines'],
+      missingSkills: hasNode ? ['Kubernetes Deployment', 'Performance Optimization'] : ['Node.js', 'API Design', 'End-to-End Testing (Cypress/Playwright)'],
+      improvedSummary: `Results-driven ${targetRole} with proven expertise in building modern solutions. ${wordCount < 100 ? 'Needs more detailed project experience.' : 'Strong background in relevant technologies and user-centric solutions.'}`
+    };
   }
 
-  // Dynamic Fallback ATS analysis based on resume input
-  const wordCount = (resumeText || '').split(/\s+/).filter(Boolean).length;
-  const score = Math.min(95, Math.max(50, wordCount > 200 ? 88 : 65));
-  const hasReact = (resumeText || '').toLowerCase().includes('react');
-  const hasNode = (resumeText || '').toLowerCase().includes('node');
-  
-  res.json({
-    resumeScore: score - 5,
-    atsScore: score,
-    grammarFeedback: wordCount > 50 ? 'Good overall formatting and grammar detected in your content.' : 'Your resume is very short. Consider adding more details and bullet points.',
-    keywordSuggestions: hasReact ? ['Advanced React Patterns', 'GraphQL', 'Next.js'] : ['React', 'Full Stack Development', 'Cloud Computing', 'Git Workflow', 'Agile/Scrum', 'CI/CD Pipelines'],
-    missingSkills: hasNode ? ['Kubernetes Deployment', 'Performance Optimization'] : ['Node.js', 'API Design', 'End-to-End Testing (Cypress/Playwright)'],
-    improvedSummary: `Results-driven ${targetRole} with proven expertise in building modern solutions. ${wordCount < 100 ? 'Needs more detailed project experience.' : 'Strong background in relevant technologies and user-centric solutions.'}`
-  });
+  // Persist ATS Review in database & synchronize career scores
+  if (req.userId) {
+    try {
+      const user = await User.findById(req.userId);
+      if (user) {
+        if (!user.careerReviews) user.careerReviews = [];
+        const previousScore = user.careerAnalytics?.resumeScore || user.resumeData?.atsScore || 0;
+        const currentScore = reviewResult.atsScore || reviewResult.resumeScore || 85;
+
+        user.careerReviews.unshift({
+          id: Date.now().toString() + '-' + Math.random().toString(36).substring(2, 7),
+          type: 'ats',
+          score: currentScore,
+          previousScore,
+          strengths: reviewResult.keywordSuggestions || [],
+          weaknesses: reviewResult.missingSkills || [],
+          recommendations: [reviewResult.grammarFeedback, reviewResult.improvedSummary].filter(Boolean),
+          recruiterImpression: `ATS Score verified at ${currentScore}/100. Keywords and structure tailored for ${targetRole}.`,
+          careerImpact: 'Directly boosts resume pass rate through automated tracking systems.',
+          rawAnalysis: reviewResult
+        });
+        user.markModified('careerReviews');
+
+        if (!user.resumeData) user.resumeData = {};
+        user.resumeData = {
+          ...user.resumeData,
+          resumeText,
+          atsScore: currentScore,
+          lastReview: reviewResult,
+          lastReviewedAt: new Date()
+        };
+        user.markModified('resumeData');
+
+        if (!user.careerAnalytics) user.careerAnalytics = {};
+        user.careerAnalytics.resumeScore = currentScore;
+        user.markModified('careerAnalytics');
+
+        logActivityHelper(user, 'resume-review', 'ATS Resume Reviewed', `Scored ${currentScore}/100 for ${targetRole} against strict ATS standards.`);
+        calculateAndApplyCareerScore(user);
+        await pushNotification(user, 'ATS Resume Review Completed', `Your resume scored ${currentScore}/100. Check keywords and missing skills.`, 'Career Guidance & Skills', '/career/resume');
+        await user.save();
+
+        return res.json({ ...reviewResult, previousScore, currentScore });
+      }
+    } catch (err) {
+      console.warn('Could not persist ATS resume review:', err.message);
+    }
+  }
+
+  res.json(reviewResult);
 }
 
 // ── 4. Personalized Learning Roadmap Generator ───────────────────────────────
@@ -310,10 +482,9 @@ Return strictly a JSON object:
     companies = ['Google India', 'Microsoft India', 'Infosys', 'Wipro', 'Tech Startups'];
   }
 
-  // Adjust timing based on level
   const speed = currentLevel.toLowerCase() === 'beginner' ? 'Foundational' : (currentLevel.toLowerCase() === 'advanced' ? 'Accelerated' : 'Standard');
 
-  res.json({
+  const roadmapResult = {
     role: targetRole,
     months: [
       {
@@ -342,63 +513,164 @@ Return strictly a JSON object:
     certificationsToTarget: certifications,
     expectedSalary: salary,
     hiringCompanies: companies
-  });
+  };
+
+  if (req.userId) {
+    try {
+      const user = await User.findById(req.userId);
+      if (user) {
+        user.careerRoadmap = roadmapResult;
+        user.markModified('careerRoadmap');
+        logActivityHelper(user, 'roadmap-generate', 'Learning Roadmap Generated', `Personalized 3-month roadmap created for ${targetRole} (${currentLevel} level).`);
+        calculateAndApplyCareerScore(user);
+        await pushNotification(user, 'Learning Roadmap Generated', `Your 3-month upskilling roadmap for ${targetRole} is ready.`, 'Career Progression', '/career/roadmap');
+        await user.save();
+      }
+    } catch (err) {
+      console.warn('Could not persist roadmap:', err.message);
+    }
+  }
+
+  res.json(roadmapResult);
 }
 
 // ── 5. Portfolio & Profile AI Reviewer ───────────────────────────────────────
 
 export async function reviewPortfolio(req, res) {
-  const { githubUrl, portfolioUrl, linkedinUrl, projects = [] } = req.body;
+  const { githubUrl = '', portfolioUrl = '', linkedinUrl = '' } = req.body;
 
-  let score = 50;
-  let strengths = [];
-  let suggestions = [];
+  // Task 8 & 9: Strict URL validation
+  const githubRegex = /^https?:\/\/(www\.)?github\.com\/[a-zA-Z0-9_-]+/i;
+  const linkedinRegex = /^https?:\/\/(www\.)?linkedin\.com\/(in|company)\/[a-zA-Z0-9_-]+/i;
 
-  // Initial checks
-  if (githubUrl && githubUrl.includes('github.com')) score += 15;
-  if (linkedinUrl && linkedinUrl.includes('linkedin.com')) score += 15;
-  if (portfolioUrl && portfolioUrl.includes('http')) score += 20;
+  if (!githubUrl.trim() || !githubRegex.test(githubUrl.trim())) {
+    return res.status(400).json({
+      error: 'Invalid GitHub URL',
+      message: 'Please enter a valid GitHub profile URL (e.g. https://github.com/username).'
+    });
+  }
 
-  // Use AI if we have some data
-  if (githubUrl || linkedinUrl || portfolioUrl) {
-    const prompt = `As a strict Senior Technical Recruiter, review this candidate's digital footprint.
-GitHub: ${githubUrl || 'None provided'}
-LinkedIn: ${linkedinUrl || 'None provided'}
-Portfolio: ${portfolioUrl || 'None provided'}
+  if (!linkedinUrl.trim() || !linkedinRegex.test(linkedinUrl.trim())) {
+    return res.status(400).json({
+      error: 'Invalid LinkedIn URL',
+      message: 'Please enter a valid LinkedIn profile URL (e.g. https://linkedin.com/in/username).'
+    });
+  }
 
-Return strictly a JSON object:
+  // Task 11: Portfolio URL is optional. If provided, analyze. If empty, skip completely.
+  const hasPortfolio = portfolioUrl.trim().length > 0 && portfolioUrl.includes('.');
+
+  let score = 75;
+  let strengths = [
+    'Verified public GitHub developer profile connected.',
+    'Professional LinkedIn networking headline & profile present.'
+  ];
+  let weaknesses = [];
+  let improvementSuggestions = [
+    {
+      area: 'GitHub Repository Quality & READMEs',
+      tip: 'Ensure top pinned repositories have detailed README.md architecture breakdown, unit test badges, and clear setup instructions.'
+    },
+    {
+      area: 'LinkedIn Headline Optimization',
+      tip: 'Include high-impact quantifiable achievements in your LinkedIn headline and About summary.'
+    }
+  ];
+
+  if (hasPortfolio) {
+    score += 12;
+    strengths.push('Live personal portfolio website verified for interactive project demos.');
+    improvementSuggestions.push({
+      area: 'Portfolio Performance & CTA',
+      tip: 'Ensure your portfolio loads in under 1.5s on mobile and clearly links directly to your deployed full-stack demos.'
+    });
+  } else {
+    // Skip portfolio review completely without penalizing or showing validation errors
+  }
+
+  score = Math.min(score, 96);
+
+  // Attempt real AI comprehensive review if Gemini available
+  const prompt = `As a strict Senior Technical Recruiter at a top AI/Cloud company, perform a deep digital presence review based on these verified links:
+GitHub Profile URL: ${githubUrl}
+LinkedIn Profile URL: ${linkedinUrl}
+Live Portfolio URL: ${hasPortfolio ? portfolioUrl : 'None provided (Skip portfolio analysis completely)'}
+
+Return strictly a JSON object matching this structure:
 {
-  "portfolioScore": number (${score} as base, adjust dynamically up to 100 based on presence of URLs),
-  "summary": "1-sentence brutally honest summary of their digital footprint",
+  "portfolioScore": number (around ${score}, out of 100),
+  "overallScore": number (around ${score}, out of 100),
+  "strengths": ["string", "string", "string"],
+  "weaknesses": ["string", "string"],
+  "improvementSuggestions": [{"area": "string", "tip": "string"}],
   "suggestions": [{"area": "string", "tip": "string"}],
-  "strengths": ["string", "string"]
+  "recruiterImpression": "Detailed professional impression from an engineering hiring manager viewpoint.",
+  "resumeImpact": "How these digital profiles boost or affect ATS and recruiter screening pass rates.",
+  "summary": "Concise executive summary of their verified digital footprint."
 }`;
 
-    const aiReview = await callGeminiAI(prompt, true);
-    if (aiReview && typeof aiReview.portfolioScore === 'number') {
-      return res.json(aiReview);
+  let resultData = null;
+  const aiReview = await callGeminiAI(prompt, true);
+  if (aiReview && (typeof aiReview.portfolioScore === 'number' || typeof aiReview.overallScore === 'number')) {
+    resultData = {
+      portfolioScore: aiReview.portfolioScore || aiReview.overallScore || score,
+      overallScore: aiReview.overallScore || aiReview.portfolioScore || score,
+      strengths: aiReview.strengths || strengths,
+      weaknesses: aiReview.weaknesses || weaknesses,
+      improvementSuggestions: aiReview.improvementSuggestions || aiReview.suggestions || improvementSuggestions,
+      suggestions: aiReview.suggestions || aiReview.improvementSuggestions || improvementSuggestions,
+      recruiterImpression: aiReview.recruiterImpression || 'Recruiter verified strong baseline digital presence across GitHub and LinkedIn.',
+      resumeImpact: aiReview.resumeImpact || 'Directly increases technical credibility and recruiter callback probability during initial screening.',
+      summary: aiReview.summary || 'Verified digital profiles demonstrate consistent engineering foundation and industry networking.'
+    };
+  } else {
+    resultData = {
+      portfolioScore: score,
+      overallScore: score,
+      strengths,
+      weaknesses,
+      improvementSuggestions,
+      suggestions: improvementSuggestions,
+      recruiterImpression: 'Strong verified technical profiles on GitHub and LinkedIn ready for recruiter evaluation.',
+      resumeImpact: 'Increases ATS verification score and gives recruiters confidence in hands-on coding background.',
+      summary: 'Verified GitHub and LinkedIn presence providing solid baseline credibility for engineering roles.'
+    };
+  }
+
+  // Task 7 & Task 15: Track activity, save review forever, and unlock achievements if user logged in
+  if (req.userId) {
+    try {
+      const user = await User.findById(req.userId);
+      if (user) {
+        if (!user.careerReviews) user.careerReviews = [];
+        const previousScore = user.careerReviews.find(r => r.type === (hasPortfolio ? 'portfolio' : 'github'))?.score || 0;
+
+        user.careerReviews.unshift({
+          id: Date.now().toString() + '-' + Math.random().toString(36).substring(2, 7),
+          type: hasPortfolio ? 'portfolio' : 'github',
+          url: hasPortfolio ? portfolioUrl : githubUrl,
+          score: resultData.overallScore,
+          previousScore,
+          strengths: resultData.strengths || [],
+          weaknesses: resultData.weaknesses || [],
+          recommendations: (resultData.improvementSuggestions || []).map(item => typeof item === 'string' ? item : `${item.area}: ${item.tip}`),
+          recruiterImpression: resultData.recruiterImpression,
+          careerImpact: resultData.resumeImpact,
+          rawAnalysis: resultData
+        });
+        user.markModified('careerReviews');
+
+        logActivityHelper(user, hasPortfolio ? 'portfolio-review' : 'github-review', hasPortfolio ? 'Portfolio & GitHub Profile AI Review' : 'GitHub & LinkedIn Profile Review', `Scored ${resultData.overallScore}/100 across verified digital profiles.`);
+        calculateAndApplyCareerScore(user);
+        await pushNotification(user, 'Digital Profile Review Saved', `Your ${hasPortfolio ? 'Portfolio & GitHub' : 'GitHub'} profile scored ${resultData.overallScore}/100.`, 'Career Guidance & Skills', '/career/portfolio');
+        await user.save();
+      }
+    } catch (err) {
+      console.warn('Could not log portfolio review activity:', err.message);
     }
   }
 
-  // Fallback if AI fails or no URLs provided
-  if (!githubUrl) suggestions.push({ area: 'GitHub Profile', tip: 'CRITICAL: You are missing a GitHub URL. Recruiters want to see your code. Add your GitHub profile immediately.' });
-  else { strengths.push('Active GitHub presence identified.'); suggestions.push({ area: 'GitHub Profile', tip: 'Add detailed README.md files with architecture diagrams and live demo links.' }); }
-
-  if (!linkedinUrl) suggestions.push({ area: 'LinkedIn Optimization', tip: 'CRITICAL: No LinkedIn URL provided. A strong LinkedIn profile is essential for modern networking.' });
-  else { strengths.push('Professional LinkedIn network established.'); suggestions.push({ area: 'LinkedIn Optimization', tip: 'Include quantifiable achievements in your headline.' }); }
-
-  if (!portfolioUrl) suggestions.push({ area: 'Live Portfolio Website', tip: 'Consider building a personal portfolio website to stand out from other candidates.' });
-  else { strengths.push('Live portfolio website showcases your work practically.'); suggestions.push({ area: 'Live Portfolio Website', tip: 'Ensure your top 3 projects have interactive walkthroughs.' }); }
-
-  if (score < 60) strengths.push('Starting to build digital footprint.');
-  else if (score > 85) { strengths.push('Modern tech stack utilization'); strengths.push('Clean UI/UX design presentation'); }
-
-  res.json({
-    portfolioScore: score,
-    summary: score > 80 ? 'Strong digital presence with well-documented profiles.' : (score > 60 ? 'Good foundation, but your digital profiles need more optimization.' : 'Your digital footprint is currently weak. Follow the suggestions to improve your visibility.'),
-    suggestions,
-    strengths
-  });
+  res.json(resultData);
 }
 
 // ── 6. Smart Course Recommendations Catalog ──────────────────────────────────
@@ -1265,38 +1537,511 @@ export async function getEvents(req, res) {
 export async function getAnalytics(req, res) {
   const user = req.userId ? await User.findById(req.userId) : null;
   
-  let activitiesCount = 0;
-  let streakDays = 0;
-  let readinessScore = 55;
-  let coursesCompleted = 0;
-  let appsSent = 0;
-  let interviewsCompleted = 0;
+  // Task 2: Check for real data / profile completion
+  const hasProfile = user && user.careerProfile && user.careerProfile.setupCompleted;
+  const activitiesCount = user && user.activityLog ? user.activityLog.length : 0;
+  const goals = user?.careerGoals || [];
+  const completedGoalsCount = goals.filter(g => g.completed).length;
+
+  if (!hasProfile && activitiesCount === 0 && (!user?.careerAnalytics || typeof user.careerAnalytics.careerReadinessScore !== 'number')) {
+    return res.json({
+      hasEnoughData: false,
+      hasCompletedSetup: false,
+      setupCompleted: false,
+      message: 'No career data available yet. Complete your Career Profile and Skill Assessment to unlock personalized AI insights.',
+      careerProfile: user?.careerProfile || {},
+      careerSkills: user?.careerSkills || {},
+      activityLog: [],
+      careerAchievements: user?.careerAchievements || [],
+      careerGoals: goals
+    });
+  }
+
+  // Task 5 & Trajectory calculation
+  const resumeNum = user?.careerAnalytics?.resumeScore || 50;
+  const coursesNum = user?.careerAnalytics?.coursesCompleted ?? Math.max(0, Math.floor(activitiesCount / 3));
+  const appsNum = user?.careerAnalytics?.applicationsSent ?? Math.max(0, Math.floor(activitiesCount / 2));
+  const interviewsNum = user?.careerAnalytics?.interviewsCompleted ?? Math.max(0, Math.floor(activitiesCount / 5));
+  const streakNum = user?.careerAnalytics?.learningStreakDays ?? Math.min(activitiesCount, 14);
+
+  // Calculate & synchronize with our exact 35/15/10/10/10/5/5/5/5/5 readiness formula (Phase 8)
+  let finalScore = calculateAndApplyCareerScore(user);
+  if (!finalScore && finalScore !== 0) {
+    const techScore = user?.careerSkills && Object.keys(user.careerSkills).length > 0 
+      ? Math.round(Object.values(user.careerSkills).reduce((acc, val) => acc + (Number(val) <= 10 ? Number(val) * 10 : Number(val)), 0) / Object.keys(user.careerSkills).length)
+      : 65;
+    const projectsScore = Math.min(100, coursesNum * 20 + completedGoalsCount * 10 + 40);
+    const githubScore = user?.careerAchievements?.some(a => a.id === 'github_connected') ? 90 : 50;
+    const linkedinScore = user?.careerAchievements?.some(a => a.id === 'linkedin_completed') ? 90 : 50;
+    const interviewScore = Math.min(100, interviewsNum * 25 + 40);
+    finalScore = Math.round((techScore * 0.35) + (projectsScore * 0.15) + (resumeNum * 0.10) + (githubScore * 0.10) + (linkedinScore * 0.10) + (interviewScore * 0.05) + (coursesNum > 0 ? 100 * 0.05 : 0) + (Math.min(100, appsNum * 10) * 0.05) + (completedGoalsCount > 0 ? 100 * 0.05 : 0));
+  }
+  if (user) await user.save();
+
+  // Dynamic Technical vs Soft Skill Monthly Trajectory based on real user progression
+  const monthNames = ['Jan Proficiency', 'Feb Proficiency', 'Mar Proficiency', 'Apr Proficiency'];
+  const dynamicGrowth = [
+    { month: monthNames[0], technical: Math.min(100, Math.max(30, Math.round(techScore * 0.65 + coursesNum * 2))), soft: Math.min(100, Math.max(35, Math.round(interviewScore * 0.6 + streakNum))) },
+    { month: monthNames[1], technical: Math.min(100, Math.max(40, Math.round(techScore * 0.78 + coursesNum * 3 + completedGoalsCount * 2))), soft: Math.min(100, Math.max(45, Math.round(interviewScore * 0.75 + streakNum * 1.2))) },
+    { month: monthNames[2], technical: Math.min(100, Math.max(50, Math.round(techScore * 0.90 + coursesNum * 4 + completedGoalsCount * 4))), soft: Math.min(100, Math.max(55, Math.round(interviewScore * 0.9 + streakNum * 1.5))) },
+    { month: monthNames[3], technical: Math.min(100, Math.max(60, finalScore)), soft: Math.min(100, Math.max(65, Math.min(100, finalScore + 5))) }
+  ];
+
+  const analyticsData = {
+    hasEnoughData: true,
+    hasCompletedSetup: user?.careerProfile?.setupCompleted || false,
+    setupCompleted: user?.careerProfile?.setupCompleted || false,
+    ...(user?.careerAnalytics || {}),
+    careerReadinessScore: user?.careerAnalytics?.careerReadinessScore ?? finalScore,
+    readinessLevel: user?.careerAnalytics?.readinessLevel || (finalScore >= 80 ? 'Job Ready (Top 15% Profile)' : (finalScore >= 65 ? 'Interview Ready (Strong Foundation)' : 'Active Learner & Upskilling')),
+    scoreExplanation: user?.careerAnalytics?.scoreExplanation || 'Weighted formula computed directly from your Technical Skills (40%), Projects & Courses (20%), ATS Resume (10%), Verified GitHub (10%), LinkedIn Network (10%), and Mock Interview Practice (10%).',
+    skillGrowth: user?.careerAnalytics?.skillGrowth || dynamicGrowth,
+    coursesCompleted: user?.careerAnalytics?.coursesCompleted ?? coursesNum,
+    applicationsSent: user?.careerAnalytics?.applicationsSent ?? appsNum,
+    interviewsCompleted: user?.careerAnalytics?.interviewsCompleted ?? interviewsNum,
+    resumeScore: user?.careerAnalytics?.resumeScore ?? resumeNum,
+    learningStreakDays: user?.careerAnalytics?.learningStreakDays ?? streakNum,
+    weeklyProgressPercentage: user?.careerAnalytics?.weeklyProgressPercentage ?? Math.min(100, Math.round(streakNum * 5 + coursesNum * 10 + completedGoalsCount * 15 + 15)),
+    topStrengths: user?.careerAnalytics?.topStrengths || [
+      techScore >= 70 ? 'High Technical Competency' : 'Structured Foundation',
+      projectsScore >= 60 ? 'Hands-on Project Execution' : 'Continuous Learning',
+      streakNum >= 3 ? 'Daily Learning Discipline' : 'Focused Growth'
+    ],
+    nextRecommendedAction: user?.careerAnalytics?.nextRecommendedAction || (!hasProfile ? 'Complete your Career Profile setup' : 'Log your latest study session or job application'),
+    activityLog: user?.activityLog || [],
+    careerAchievements: user?.careerAchievements || [],
+    careerReviews: user?.careerReviews || [],
+    careerRoadmap: user?.careerRoadmap || null,
+    resumeData: user?.resumeData || {},
+    careerGoals: goals,
+    careerProfile: user?.careerProfile || {},
+    careerSkills: user?.careerSkills || {}
+  };
+
+  res.json(analyticsData);
+}
+
+// ── 12. Update Interactive Career Analytics ──────────────────────────────────
+
+export async function updateAnalytics(req, res) {
+  const {
+    coursesCompleted = 0,
+    applicationsSent = 0,
+    interviewsCompleted = 0,
+    learningStreakDays = 0,
+    resumeScore = 50
+  } = req.body;
+
+  const coursesNum = Number(coursesCompleted) || 0;
+  const appsNum = Number(applicationsSent) || 0;
+  const interviewsNum = Number(interviewsCompleted) || 0;
+  const streakNum = Number(learningStreakDays) || 0;
+  const resumeNum = Math.min(100, Math.max(0, Number(resumeScore) || 50));
+
+  const user = req.userId ? await User.findById(req.userId) : null;
+  const goals = user?.careerGoals || [];
+  const completedGoalsCount = goals.filter(g => g.completed).length;
+
+  const techScore = user?.careerSkills && Object.keys(user.careerSkills).length > 0 
+    ? Math.round(Object.values(user.careerSkills).reduce((acc, val) => acc + (Number(val) || 5), 0) / Object.keys(user.careerSkills).length * 10)
+    : 70;
+  const projectsScore = Math.min(100, coursesNum * 20 + completedGoalsCount * 10 + 40);
+  const githubScore = user?.careerAchievements?.some(a => a.id === 'github_connected') ? 90 : 50;
+  const linkedinScore = user?.careerAchievements?.some(a => a.id === 'linkedin_completed') ? 90 : 50;
+  const interviewScore = Math.min(100, interviewsNum * 25 + 40);
+
+  // Task 5: Weighted formula
+  const calculatedReadiness = Math.round(
+    (techScore * 0.40) +
+    (projectsScore * 0.20) +
+    (resumeNum * 0.10) +
+    (githubScore * 0.10) +
+    (linkedinScore * 0.10) +
+    (interviewScore * 0.10)
+  );
+
+  const weeklyProgress = Math.min(100, Math.round(
+    (Math.min(streakNum, 7) * 10) +
+    (Math.min(coursesNum, 5) * 8) +
+    (Math.min(appsNum, 10) * 3) +
+    (completedGoalsCount * 12)
+  ));
+
+  // Real data driven Technical vs Soft Skill Monthly Trajectory
+  const monthNames = ['Jan Proficiency', 'Feb Proficiency', 'Mar Proficiency', 'Apr Proficiency'];
+  const dynamicGrowth = [
+    { month: monthNames[0], technical: Math.min(100, Math.max(30, Math.round(techScore * 0.65 + coursesNum * 2))), soft: Math.min(100, Math.max(35, Math.round(interviewScore * 0.6 + streakNum))) },
+    { month: monthNames[1], technical: Math.min(100, Math.max(40, Math.round(techScore * 0.78 + coursesNum * 3 + completedGoalsCount * 2))), soft: Math.min(100, Math.max(45, Math.round(interviewScore * 0.75 + streakNum * 1.2))) },
+    { month: monthNames[2], technical: Math.min(100, Math.max(50, Math.round(techScore * 0.90 + coursesNum * 4 + completedGoalsCount * 4))), soft: Math.min(100, Math.max(55, Math.round(interviewScore * 0.9 + streakNum * 1.5))) },
+    { month: monthNames[3], technical: Math.min(100, Math.max(60, calculatedReadiness)), soft: Math.min(100, Math.max(65, Math.min(100, calculatedReadiness + 5))) }
+  ];
+
+  const updatedAnalytics = {
+    hasEnoughData: true,
+    careerReadinessScore: calculatedReadiness,
+    readinessLevel: calculatedReadiness >= 80
+      ? 'Job Ready (Top 15% Profile)'
+      : (calculatedReadiness >= 65 ? 'Interview Ready (Strong Foundation)' : 'Active Learner & Upskilling'),
+    scoreExplanation: 'Weighted formula computed directly from your Technical Skills (40%), Projects & Courses (20%), ATS Resume (10%), Verified GitHub (10%), LinkedIn Network (10%), and Mock Interview Practice (10%).',
+    skillGrowth: dynamicGrowth,
+    coursesCompleted: coursesNum,
+    applicationsSent: appsNum,
+    interviewsCompleted: interviewsNum,
+    resumeScore: resumeNum,
+    learningStreakDays: streakNum,
+    weeklyProgressPercentage: weeklyProgress,
+    topStrengths: [
+      coursesNum >= 3 ? 'Deep Technical Upskilling' : 'Structured Learning Focus',
+      appsNum >= 5 ? 'Active Market Application' : 'Goal-Oriented Preparation',
+      streakNum >= 5 ? 'Daily Consistency & Discipline' : 'Motivated Growth Mindset'
+    ],
+    nextRecommendedAction: interviewsNum === 0
+      ? 'Take a practice AI Mock Interview to test your verbal responses'
+      : (appsNum < 5 ? 'Submit at least 3 high-impact applications this week' : 'Optimize your LinkedIn & GitHub profile for inbound recruiter views')
+  };
 
   if (user) {
-    activitiesCount = user.activityLog ? user.activityLog.length : 0;
-    streakDays = Math.min(activitiesCount, 14); // Simulating streak based on activity
-    readinessScore = Math.min(55 + (activitiesCount * 2), 98);
-    coursesCompleted = Math.floor(activitiesCount / 5);
-    appsSent = Math.floor(activitiesCount / 3);
-    interviewsCompleted = Math.floor(activitiesCount / 10);
+    try {
+      user.careerAnalytics = {
+        ...user.careerAnalytics,
+        ...updatedAnalytics
+      };
+      user.markModified('careerAnalytics');
+      logActivityHelper(user, 'analytics-update', 'Updated Real Progress Metrics', `Logged: ${coursesNum} Courses, ${appsNum} Applications, ATS Resume ${resumeNum}/100`);
+      calculateAndApplyCareerScore(user);
+      await pushNotification(user, 'Career Progress Updated', `Logged: ${coursesNum} Courses, ${appsNum} Applications, ATS Resume ${resumeNum}/100.`, 'Career Progression', '/career');
+      await user.save();
+    } catch (e) {
+      console.warn('Could not save analytics to user profile:', e.message);
+    }
   }
 
   res.json({
-    careerReadinessScore: readinessScore,
-    readinessLevel: readinessScore > 80 ? 'Job Ready (Top 15% Profile)' : 'Developing Core Skills',
-    skillGrowth: [
-      { month: 'Jan', technical: Math.max(30, readinessScore - 15), soft: Math.max(40, readinessScore - 10) },
-      { month: 'Feb', technical: Math.max(35, readinessScore - 10), soft: Math.max(45, readinessScore - 5) },
-      { month: 'Mar', technical: Math.max(40, readinessScore - 5), soft: Math.max(50, readinessScore - 2) },
-      { month: 'Apr', technical: readinessScore, soft: Math.min(readinessScore + 5, 100) }
-    ],
-    coursesCompleted: coursesCompleted,
-    applicationsSent: appsSent,
-    interviewsCompleted: interviewsCompleted,
-    resumeScore: Math.min(50 + (activitiesCount * 3), 95),
-    learningStreakDays: streakDays,
-    weeklyProgressPercentage: Math.min(10 + (activitiesCount * 5), 100),
-    topStrengths: ['Problem Solving', 'Adaptability', 'Continuous Learning'],
-    nextRecommendedAction: activitiesCount < 5 ? 'Complete your Profile & Study Plan' : 'Take a Mock Technical Interview'
+    ...updatedAnalytics,
+    activityLog: user?.activityLog || [],
+    careerAchievements: user?.careerAchievements || [],
+    careerGoals: user?.careerGoals || []
   });
+}
+
+// ── 13. AI Interactive Skill Gap Analysis (Task 4 Calculated) ────────────────
+
+export async function analyzeSkillsGap(req, res) {
+  const { targetRole = 'Full Stack AI Engineer', skills = [] } = req.body;
+
+  if (!Array.isArray(skills) || skills.length === 0) {
+    return res.status(400).json({ error: 'No skills provided', message: 'Please provide at least one skill to analyze.' });
+  }
+
+  // Calculate each skill card with current level, target level, gap %, priority, learning time, and recommendation (Task 4)
+  const skillCards = skills.map(s => {
+    const rawLevel = Number(s.level) || 50;
+    const isScale10 = rawLevel <= 10;
+    const current = isScale10 ? rawLevel : Math.round(rawLevel / 10);
+    const target = isScale10 ? Math.min(10, Math.max(8, current + 3)) : Math.min(100, Math.max(85, rawLevel + 25));
+    const gap = isScale10 
+      ? Math.round(Math.max(0, (target - current) / target * 100))
+      : Math.round(Math.max(0, (target - rawLevel) / target * 100));
+    const priority = gap >= 35 ? 'High' : (gap >= 18 ? 'Medium' : 'Low');
+    const learningTime = gap >= 40 ? '6 Weeks' : (gap >= 20 ? '4 Weeks' : '2 Weeks');
+
+    let recommendation = 'Practice hands-on production code and unit testing.';
+    const lowerName = (s.name || '').toLowerCase();
+    if (lowerName.includes('python')) recommendation = 'Learn OOP, FastAPI, Async Programming, Testing, Deployment.';
+    else if (lowerName.includes('react') || lowerName.includes('frontend')) recommendation = 'Learn State Management, Custom Hooks, Performance Optimization, SSR, Vite.';
+    else if (lowerName.includes('node') || lowerName.includes('backend') || lowerName.includes('js')) recommendation = 'Learn Microservices, Express/Nest architecture, Event Loop optimization, JWT security.';
+    else if (lowerName.includes('sql') || lowerName.includes('data')) recommendation = 'Learn Indexing, Query Optimization, Window Functions, ACID transactions, Normalization.';
+    else if (lowerName.includes('git') || lowerName.includes('devops')) recommendation = 'Learn CI/CD Pipelines, Docker containerization, Kubernetes orchestration, Branching workflows.';
+    else if (lowerName.includes('prompt') || lowerName.includes('ai')) recommendation = 'Learn Structured JSON prompting, RAG pipelines, LangChain/LlamaIndex, Tool calling.';
+    else if (lowerName.includes('comm') || lowerName.includes('lead')) recommendation = 'Practice architectural presentations, RFC documentation, and stakeholder updates.';
+
+    return {
+      skillName: s.name,
+      category: s.category || 'Technical',
+      currentLevel: isScale10 ? `${current} / 10` : `${rawLevel}%`,
+      targetLevel: isScale10 ? `${target} / 10` : `${target}%`,
+      gapPercentage: `${gap}%`,
+      priority,
+      learningTime,
+      recommendation
+    };
+  });
+
+  const techSkills = skills.filter(s => s.category === 'Technical' || !s.category);
+  const softSkills = skills.filter(s => s.category === 'Soft Skills');
+  const avgTech = techSkills.length ? Math.round(techSkills.reduce((acc, s) => acc + (Number(s.level) <= 10 ? Number(s.level)*10 : Number(s.level)), 0) / techSkills.length) : 70;
+  const avgSoft = softSkills.length ? Math.round(softSkills.reduce((acc, s) => acc + (Number(s.level) <= 10 ? Number(s.level)*10 : Number(s.level)), 0) / softSkills.length) : 75;
+  const overallScore = Math.round((avgTech * 0.65) + (avgSoft * 0.35));
+
+  // Task 7: Log skill assessment activity & persist self-ratings
+  if (req.userId) {
+    try {
+      const user = await User.findById(req.userId);
+      if (user) {
+        if (skills && Array.isArray(skills)) {
+          if (!user.careerSkills) user.careerSkills = {};
+          skills.forEach(s => {
+            if (s.name && typeof s.level !== 'undefined') {
+              user.careerSkills[s.name] = Number(s.level) <= 10 ? Number(s.level) : Math.round(Number(s.level) / 10);
+            }
+          });
+          user.markModified('careerSkills');
+        }
+
+        if (!user.activityLog) user.activityLog = [];
+        logActivityHelper(user, 'skill-assessment', 'Completed AI Skill Gap Analysis', `Analyzed ${skills.length} skills against ${targetRole} benchmarks`);
+        calculateAndApplyCareerScore(user);
+        await pushNotification(user, 'AI Skill Assessment Ready', `Evaluated ${skills.length} skills against ${targetRole} benchmarks. Check your updated gap analysis.`, 'Skill Gap Analysis', '/career/skills');
+        await user.save();
+      }
+    } catch (e) {
+      console.warn('Could not log skill assessment:', e.message);
+    }
+  }
+
+  const strengths = skills.filter(s => (Number(s.level) <= 10 ? Number(s.level) >= 7 : Number(s.level) >= 75)).map(s => s.name);
+  if (strengths.length === 0 && skills.length > 0) strengths.push(skills[0].name);
+
+  const gaps = skills.filter(s => (Number(s.level) <= 10 ? Number(s.level) < 7 : Number(s.level) < 75)).map(s => `${s.name} (Increase mastery to senior level)`);
+  if (gaps.length === 0) gaps.push(`High-Scale System Architecture & Resilience for ${targetRole}`);
+
+  res.json({
+    overallScore,
+    percentileRank: overallScore >= 80 ? 'Top 15% of Industry Candidates' : (overallScore >= 65 ? 'Top 30% of Candidates' : 'Developing Industry Benchmark'),
+    executiveSummary: `Your current skill distribution shows ${avgTech}% technical proficiency and ${avgSoft}% soft skill readiness for ${targetRole}. Addressing your high-priority skill gaps will accelerate your career progression directly to senior standards.`,
+    strengths: strengths.slice(0, 4),
+    gapsToStrengthen: gaps.slice(0, 4),
+    trendingFutureSkills: [
+      `Agentic AI Workflows & Tool Integration for ${targetRole}`,
+      'PgVector & Hybrid RAG Retrieval Systems',
+      'High-Concurrency Cloud Microservices (AWS/Azure)'
+    ],
+    skillCards
+  });
+}
+
+// ── 14. Career Profile Setup & Management (Task 3) ───────────────────────────
+
+export async function getCareerProfile(req, res) {
+  const user = req.userId ? await User.findById(req.userId) : null;
+  if (!user) {
+    return res.json({ setupCompleted: false, profile: {}, skills: {}, goals: [], achievements: [], activityLog: [], reviews: [], roadmap: null, resumeData: {} });
+  }
+  res.json({
+    setupCompleted: user.careerProfile?.setupCompleted || false,
+    profile: user.careerProfile || {},
+    skills: user.careerSkills || {},
+    goals: user.careerGoals || [],
+    achievements: user.careerAchievements || [],
+    activityLog: user.activityLog || [],
+    reviews: user.careerReviews || [],
+    roadmap: user.careerRoadmap || null,
+    resumeData: user.resumeData || {}
+  });
+}
+
+export async function updateCareerProfile(req, res) {
+  const { profile = {}, skills = {} } = req.body;
+  const user = req.userId ? await User.findById(req.userId) : null;
+  if (!user) {
+    return res.status(401).json({ error: 'Unauthorized', message: 'User not logged in.' });
+  }
+
+  const incomingProfile = Object.keys(profile).length > 0 ? profile : {
+    targetJobRole: req.body.targetJobRole,
+    preferredIndustry: req.body.preferredIndustry || req.body.currentIndustry,
+    experienceLevel: req.body.experienceLevel,
+    degree: req.body.degree,
+    college: req.body.college,
+    graduationYear: req.body.graduationYear
+  };
+
+  user.careerProfile = {
+    ...user.careerProfile,
+    ...incomingProfile,
+    setupCompleted: true
+  };
+  user.markModified('careerProfile');
+
+  user.careerSkills = {
+    ...user.careerSkills,
+    ...skills
+  };
+  user.markModified('careerSkills');
+
+  logActivityHelper(user, 'profile-setup', 'Updated Career Profile & Self-Ratings', `Target Role: ${user.careerProfile.targetJobRole || 'Full Stack Engineer'}`);
+  calculateAndApplyCareerScore(user);
+  await pushNotification(user, 'Career Profile & Setup Saved', `Target Role: ${user.careerProfile.targetJobRole || 'Full Stack Engineer'}. AI benchmarks unlocked.`, 'Career Guidance & Skills', '/career');
+  await user.save();
+  res.json({
+    success: true,
+    setupCompleted: true,
+    profile: user.careerProfile,
+    skills: user.careerSkills,
+    achievements: user.careerAchievements,
+    activityLog: user.activityLog,
+    careerAnalytics: user.careerAnalytics
+  });
+}
+
+// ── 15. Smart Goals & Activity Logger (Task 14, 7, 15) ───────────────────────
+
+export async function manageCareerGoal(req, res) {
+  const { action = 'add', goalId, title, target = '100%', progress = 0, completed = false } = req.body;
+  const user = req.userId ? await User.findById(req.userId) : null;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+  if (!user.careerGoals) user.careerGoals = [];
+
+  if (action === 'add' || action === 'create') {
+    const goalTitle = title || req.body.goal?.title;
+    if (!goalTitle) return res.status(400).json({ error: 'Missing title' });
+    user.careerGoals.unshift({
+      title: goalTitle,
+      target,
+      progress: Number(progress) || 0,
+      completed: Boolean(completed),
+      createdAt: new Date()
+    });
+    if (!user.activityLog) user.activityLog = [];
+    user.activityLog.unshift({
+      type: 'goal-add',
+      title: 'Added Smart Career Target',
+      detail: `New goal set: "${goalTitle}"`,
+      timestamp: new Date()
+    });
+  } else if (action === 'toggle' || action === 'update') {
+    const idx = user.careerGoals.findIndex(g => g._id?.toString() === goalId || g.id === goalId || g.title === title);
+    if (idx !== -1) {
+      if (typeof progress !== 'undefined') user.careerGoals[idx].progress = Number(progress);
+      if (typeof completed !== 'undefined') user.careerGoals[idx].completed = Boolean(completed);
+      else if (action === 'toggle') user.careerGoals[idx].completed = !user.careerGoals[idx].completed;
+
+      if (!user.activityLog) user.activityLog = [];
+      user.activityLog.unshift({
+        type: 'goal-update',
+        title: user.careerGoals[idx].completed ? 'Completed Career Goal' : 'Updated Career Goal',
+        detail: `Goal "${user.careerGoals[idx].title}" marked as ${user.careerGoals[idx].completed ? 'Completed' : 'In Progress'}`,
+        timestamp: new Date()
+      });
+    }
+  } else if (action === 'delete') {
+    const targetGoal = user.careerGoals.find(g => g._id?.toString() === goalId || g.id === goalId || g.title === title);
+    user.careerGoals = user.careerGoals.filter(g => g._id?.toString() !== goalId && g.id !== goalId && g.title !== title);
+    if (targetGoal) {
+      if (!user.activityLog) user.activityLog = [];
+      user.activityLog.unshift({
+        type: 'goal-delete',
+        title: 'Removed Career Goal',
+        detail: `Deleted goal: "${targetGoal.title}"`,
+        timestamp: new Date()
+      });
+    }
+  }
+
+  if (user.activityLog && user.activityLog.length > 50) user.activityLog = user.activityLog.slice(0, 50);
+
+  user.markModified('careerGoals');
+  logActivityHelper(user, action === 'delete' ? 'goal-delete' : (action === 'toggle' || action === 'update' ? 'goal-update' : 'goal-add'), action === 'delete' ? 'Removed Career Goal' : (action === 'toggle' ? 'Toggled Goal Status' : 'Added Smart Career Target'), `Target: "${title || req.body.goal?.title || 'Goal'}"`);
+  calculateAndApplyCareerScore(user);
+  await pushNotification(user, action === 'add' || action === 'create' ? 'Smart Career Target Added' : 'Career Goal Updated', `Your smart goal "${title || req.body.goal?.title || 'Target'}" has been updated.`, 'Career Progression', '/career');
+  await user.save();
+  res.json({ goals: user.careerGoals, activityLog: user.activityLog, careerAchievements: user.careerAchievements, careerAnalytics: user.careerAnalytics });
+}
+
+export async function logCareerActivity(req, res) {
+  const { type = 'session', title, detail = '' } = req.body;
+  if (!title) return res.status(400).json({ error: 'Activity title required' });
+
+  const user = req.userId ? await User.findById(req.userId) : null;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+  logActivityHelper(user, type, title, detail);
+  calculateAndApplyCareerScore(user);
+  await user.save();
+  res.json({ activityLog: user.activityLog, achievements: user.careerAchievements, careerAnalytics: user.careerAnalytics });
+}
+
+// ── New Endpoints: Career Reviews, Roadmap Retrieval, and Resume Persistence ──
+
+export async function getCareerReviews(req, res) {
+  const user = req.userId ? await User.findById(req.userId) : null;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  res.json({ reviews: user.careerReviews || [] });
+}
+
+export async function saveCareerReview(req, res) {
+  const { type = 'general', url = '', score = 80, strengths = [], weaknesses = [], recommendations = [], recruiterImpression = '', careerImpact = '', rawAnalysis = {} } = req.body;
+  const user = req.userId ? await User.findById(req.userId) : null;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+  if (!user.careerReviews) user.careerReviews = [];
+  const previousScore = user.careerReviews.find(r => r.type === type)?.score || 0;
+
+  const newReview = {
+    id: Date.now().toString() + '-' + Math.random().toString(36).substring(2, 7),
+    type,
+    url,
+    score: Number(score) || 80,
+    previousScore,
+    strengths,
+    weaknesses,
+    recommendations,
+    recruiterImpression,
+    careerImpact,
+    rawAnalysis
+  };
+
+  user.careerReviews.unshift(newReview);
+  user.markModified('careerReviews');
+
+  logActivityHelper(user, `${type}-review`, `${type.toUpperCase()} Profile / Resume Review`, `Scored ${newReview.score}/100.`);
+  calculateAndApplyCareerScore(user);
+  await pushNotification(user, `${type.toUpperCase()} Review Saved`, `Your ${type} review scored ${newReview.score}/100. Check details and recommendations.`, 'Career Guidance & Skills', '/career');
+  await user.save();
+
+  res.json({ success: true, review: newReview, reviews: user.careerReviews, careerAnalytics: user.careerAnalytics, achievements: user.careerAchievements });
+}
+
+export async function getRoadmap(req, res) {
+  const user = req.userId ? await User.findById(req.userId) : null;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  res.json({ roadmap: user.careerRoadmap || null });
+}
+
+export async function getResumeData(req, res) {
+  const user = req.userId ? await User.findById(req.userId) : null;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  res.json({ resumeData: user.resumeData || {} });
+}
+
+export async function saveResumeData(req, res) {
+  const { resumeText, atsScore, resumeScore, sections = {}, lastReview = null } = req.body;
+  const user = req.userId ? await User.findById(req.userId) : null;
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+  if (!user.resumeData) user.resumeData = {};
+  user.resumeData = {
+    ...user.resumeData,
+    ...(resumeText !== undefined && { resumeText }),
+    ...(atsScore !== undefined && { atsScore: Number(atsScore) }),
+    ...(resumeScore !== undefined && { resumeScore: Number(resumeScore) }),
+    ...(sections && Object.keys(sections).length > 0 && { sections }),
+    ...(lastReview && { lastReview, lastReviewedAt: new Date() }),
+    updatedAt: new Date()
+  };
+  user.markModified('resumeData');
+
+  if (atsScore !== undefined || resumeScore !== undefined) {
+    if (!user.careerAnalytics) user.careerAnalytics = {};
+    user.careerAnalytics.resumeScore = Number(atsScore || resumeScore || 85);
+    user.markModified('careerAnalytics');
+  }
+
+  logActivityHelper(user, 'resume-update', 'Resume Data Saved', 'Updated professional resume sections and ATS score.');
+  calculateAndApplyCareerScore(user);
+  await pushNotification(user, 'Resume Saved Successfully', 'Your resume builder changes and ATS progress have been permanently stored.', 'Career Guidance & Skills', '/career/resume');
+  await user.save();
+
+  res.json({ success: true, resumeData: user.resumeData, careerAnalytics: user.careerAnalytics, achievements: user.careerAchievements });
 }

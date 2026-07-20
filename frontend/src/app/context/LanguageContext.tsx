@@ -511,15 +511,32 @@ const translations: Record<Language, Record<string, string>> = {
   },
 };
 
+// Language code → BCP-47 locale tag for html lang attribute
+const LANG_LOCALE: Record<Language, string> = {
+  en: 'en', hi: 'hi', ta: 'ta', te: 'te', bn: 'bn', mr: 'mr', gu: 'gu', kn: 'kn'
+};
+
+function applyLanguageToDocument(lang: Language) {
+  // Set lang attribute on <html> so browser, screen readers, and spellcheck use it
+  document.documentElement.lang = LANG_LOCALE[lang] || lang;
+  // All supported Indian scripts are LTR
+  document.documentElement.dir = 'ltr';
+  // Save preference
+  localStorage.setItem('sarathi_language', lang);
+}
+
 export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [language, setLanguageState] = useState<Language>(() => {
     const saved = localStorage.getItem('sarathi_language') as Language;
-    return saved && translations[saved] ? saved : 'en';
+    const resolved = saved && translations[saved] ? saved : 'en';
+    // Apply immediately on load (before first render)
+    applyLanguageToDocument(resolved);
+    return resolved;
   });
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
-    localStorage.setItem('sarathi_language', lang);
+    applyLanguageToDocument(lang);
   };
 
   const t = (key: string): string => {

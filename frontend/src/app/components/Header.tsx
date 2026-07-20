@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { useLanguage } from '@/app/context/LanguageContext';
 import { useAuth } from '@/app/context/AuthContext';
+import { api } from '@/app/lib/api';
 import { Button } from '@/app/components/ui/button';
 import { MobileMenu } from '@/app/components/MobileMenu';
 import { 
@@ -25,6 +26,23 @@ export function Header() {
   const location = useLocation();
   const { language, setLanguage, t } = useLanguage();
   const { user, logout, isAuthenticated } = useAuth();
+  const [unreadCount, setUnreadCount] = React.useState<number>(0);
+
+  React.useEffect(() => {
+    if (!isAuthenticated) return;
+    const checkUnread = async () => {
+      try {
+        const res: any = await api.get('/notifications');
+        if (res && Array.isArray(res.notifications)) {
+          const count = res.notifications.filter((n: any) => n.unread !== false).length;
+          setUnreadCount(count);
+        }
+      } catch (e) {}
+    };
+    checkUnread();
+    const interval = setInterval(checkUnread, 15000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated, location.pathname]);
 
   const handleLogout = () => {
     logout();
@@ -164,7 +182,13 @@ export function Header() {
                   title="Official Notifications"
                 >
                   <Bell className="w-4 h-4" />
-                  <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#F97316] animate-pulse" />
+                  {unreadCount > 0 ? (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#F97316] text-white text-[10px] font-extrabold flex items-center justify-center animate-pulse border-2 border-white">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  ) : (
+                    <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-green-500" title="All caught up" />
+                  )}
                 </button>
 
                 {/* Cohesive Citizen Profile Pill with Dropdown */}

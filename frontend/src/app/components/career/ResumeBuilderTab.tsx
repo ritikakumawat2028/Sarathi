@@ -27,6 +27,21 @@ export function ResumeBuilderTab() {
   const [loadingReview, setLoadingReview] = useState(false);
   const [reviewResult, setReviewResult] = useState<any | null>(null);
 
+  React.useEffect(() => {
+    async function loadSavedResume() {
+      try {
+        const res = await api.get<any>('/career/resume');
+        if (res?.resumeData) {
+          if (res.resumeData.resumeText) setResumeText(res.resumeData.resumeText);
+          if (res.resumeData.lastReview) setReviewResult(res.resumeData.lastReview);
+        }
+      } catch (e) {
+        console.warn('Could not load saved resume:', e);
+      }
+    }
+    loadSavedResume();
+  }, []);
+
   const handleAnalyzeResume = async () => {
     setLoadingReview(true);
     try {

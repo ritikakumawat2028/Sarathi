@@ -16,6 +16,8 @@ import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 import { getSchemes, refreshSchemes } from './services/schemeSource.service.js';
 import chatRoutes from './routes/chat.routes.js';
 import { solveStudentDoubt } from './controllers/user.controller.js';
+import * as userController from './controllers/user.controller.js';
+import { requireAuth } from './middleware/auth.middleware.js';
 import jwt from 'jsonwebtoken';
 
 const app = express();
@@ -48,13 +50,22 @@ const apiLimiter = rateLimit({
 app.use('/api', apiLimiter);
 
 // Root route — returns 200 so AWS EB health checks (which hit GET /) never get a 404
-const DEPLOY_VERSION = 'v3-' + new Date('2026-07-19').toISOString().slice(0, 10);
+const DEPLOY_VERSION = 'v15-' + new Date().toISOString().slice(0, 10);
 app.get('/', (_req, res) => res.json({ service: 'Sarathi AI Backend', status: 'ok', version: DEPLOY_VERSION, port: config.port, env: config.nodeEnv }));
 app.get('/health', (_req, res) => res.json({ status: 'ok', version: DEPLOY_VERSION, time: new Date().toISOString() }));
 app.use('/api/chat', chatRoutes);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
+
+// Direct top-level alias for notifications so /api/notifications connects cleanly to MongoDB
+const notificationsRouter = express.Router();
+notificationsRouter.use(requireAuth);
+notificationsRouter.get('/', (req, res, next) => userController.getNotifications(req, res, next));
+notificationsRouter.put('/read-all', (req, res, next) => userController.markAllNotificationsRead(req, res, next));
+notificationsRouter.put('/:id/read', (req, res, next) => userController.markNotificationRead(req, res, next));
+notificationsRouter.delete('/:id', (req, res, next) => userController.deleteNotification(req, res, next));
+app.use('/api/notifications', notificationsRouter);
 
 // Dedicated standalone endpoint for Student Doubt Solver (POST /api/student/doubt-solver)
 app.post('/api/student/doubt-solver', async (req, res, next) => {

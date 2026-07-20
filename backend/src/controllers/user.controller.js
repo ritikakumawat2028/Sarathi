@@ -42,19 +42,28 @@ export async function upsertProfile(req, res) {
   // Update education sub-document
   if (education && typeof education === 'object') {
     Object.assign(user.education, education);
+    user.markModified('education');
   }
 
   // Update address sub-document
   if (address && typeof address === 'object') {
     Object.assign(user.address, address);
+    user.markModified('address');
   }
 
-  if (Array.isArray(interests)) user.interests = interests;
-  if (Array.isArray(goals)) user.goals = goals;
+  if (Array.isArray(interests)) {
+    user.interests = interests;
+    user.markModified('interests');
+  }
+  if (Array.isArray(goals)) {
+    user.goals = goals;
+    user.markModified('goals');
+  }
 
   // Log profile update
   user.activityLog.push({ type: 'profile', title: 'Profile updated', detail: '' });
   if (user.activityLog.length > 50) user.activityLog = user.activityLog.slice(-50);
+  user.markModified('activityLog');
 
   await user.save();
   res.json({ profile: user.toPublic() });
@@ -1549,4 +1558,113 @@ export async function chatWithAIStream(req, res) {
   }
 
   sendDone();
+}
+
+// ── Real-Time MongoDB Notifications Engine (Citizen & Career Alerts) ────────
+
+export async function pushNotification(user, title, content, category = 'Career & System Alert', actionUrl = '/career', actionText = 'View Details') {
+  if (!user) return;
+  if (!user.notifications) user.notifications = [];
+  user.notifications.unshift({
+    id: Date.now().toString() + '-' + Math.random().toString(36).substring(2, 7),
+    title,
+    category,
+    date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    content,
+    unread: true,
+    actionUrl,
+    actionText
+  });
+  if (user.notifications.length > 60) user.notifications = user.notifications.slice(0, 60);
+  user.markModified('notifications');
+  await user.save().catch(() => {});
+}
+
+export async function getNotifications(req, res) {
+  const user = await User.findById(req.userId);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+  if (!user.notifications || user.notifications.length === 0) {
+    user.notifications = [
+      {
+        id: 'welcome_1',
+        title: 'Welcome to Sarathi AI Platform',
+        category: 'System Alert',
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        content: 'Your citizen account is active. Explore AI Career Guidance, Government Schemes, and Student Doubts.',
+        unread: true,
+        actionUrl: '/career',
+        actionText: 'Explore Career'
+      },
+      {
+        id: 'career_2',
+        title: 'AI Career Assessment Unlocked',
+        category: 'Career Guidance & Skills',
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        content: 'Complete your setup wizard in Analytics tab to receive custom ATS resume and interview benchmarks.',
+        unread: true,
+        actionUrl: '/career',
+        actionText: 'Complete Setup'
+      },
+      {
+        id: 'schemes_3',
+        title: 'New Government Schemes Available',
+        category: 'Welfare Schemes',
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        content: 'Check your eligibility across 100+ state and central welfare programs verified by Sarathi AI.',
+        unread: false,
+        actionUrl: '/schemes',
+        actionText: 'Check Eligibility'
+      }
+    ];
+    user.markModified('notifications');
+    await user.save().catch(() => {});
+  }
+
+  res.json({ notifications: user.notifications || [] });
+}
+
+export async function markNotificationRead(req, res) {
+  const { id } = req.params;
+  const user = await User.findById(req.userId);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+  if (!user.notifications) user.notifications = [];
+  const notif = user.notifications.find(n => n.id === id || n._id?.toString() === id);
+  if (notif) {
+    notif.unread = typeof req.body?.unread === 'boolean' ? req.body.unread : !notif.unread;
+    user.markModified('notifications');
+    await user.save().catch(() => {});
+  }
+
+  res.json({ notifications: user.notifications || [] });
+}
+
+export async function markAllNotificationsRead(req, res) {
+  const user = await User.findById(req.userId);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+  if (!user.notifications) user.notifications = [];
+  user.notifications.forEach(n => { n.unread = false; });
+  user.markModified('notifications');
+  await user.save().catch(() => {});
+
+  res.json({ notifications: user.notifications || [] });
+}
+
+export async function deleteNotification(req, res) {
+  const { id } = req.params;
+  const user = await User.findById(req.userId);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+  if (!user.notifications) user.notifications = [];
+  if (id === 'all') {
+    user.notifications = [];
+  } else {
+    user.notifications = user.notifications.filter(n => n.id !== id && n._id?.toString() !== id);
+  }
+  user.markModified('notifications');
+  await user.save().catch(() => {});
+
+  res.json({ notifications: user.notifications || [] });
 }

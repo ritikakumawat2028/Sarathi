@@ -220,7 +220,7 @@ export function GovernmentSchemes() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Saved Schemes</p>
-                  <p className="text-3xl font-bold">{savedSchemes.length}</p>
+                  <p className="text-3xl font-bold">{user?.savedSchemes?.length || 0}</p>
                 </div>
                 <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
                   <Heart className="w-6 h-6 text-orange-600" />

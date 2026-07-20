@@ -33,11 +33,29 @@ const addressSchema = new mongoose.Schema({
 }, { _id: false });
 
 const activitySchema = new mongoose.Schema({
-  type: { type: String, default: 'chat' },
+  id: { type: String, default: () => Date.now().toString() + '-' + Math.random().toString(36).substring(2, 7) },
+  type: { type: String, default: 'career' },
+  module: { type: String, default: 'Career Guidance' },
   title: { type: String, required: true },
   detail: { type: String, default: '' },
+  description: { type: String, default: '' },
+  status: { type: String, default: 'completed' },
   timestamp: { type: Date, default: Date.now },
-}, { _id: false });
+});
+
+const careerReviewSchema = new mongoose.Schema({
+  id: { type: String, default: () => Date.now().toString() + '-' + Math.random().toString(36).substring(2, 7) },
+  type: { type: String, required: true }, // 'github' | 'portfolio' | 'ats'
+  url: { type: String, default: '' },
+  score: { type: Number, default: 0 },
+  previousScore: { type: Number, default: 0 },
+  strengths: [{ type: String }],
+  weaknesses: [{ type: String }],
+  recommendations: [{ type: String }],
+  recruiterImpression: { type: String, default: '' },
+  careerImpact: { type: String, default: '' },
+  rawAnalysis: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+}, { timestamps: true });
 
 const studyPlanSchema = new mongoose.Schema({
   time: { type: String, default: '' },
@@ -56,6 +74,17 @@ const doubtSchema = new mongoose.Schema({
 const wellnessSchema = new mongoose.Schema({
   mood: { type: String, required: true },
   note: { type: String, default: '' },
+}, { timestamps: true });
+
+const notificationSchema = new mongoose.Schema({
+  id: { type: String, default: () => Date.now().toString() + '-' + Math.random().toString(36).substring(2, 7) },
+  title: { type: String, required: true },
+  category: { type: String, default: 'Career & System Alert' },
+  date: { type: String, default: () => new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) },
+  content: { type: String, required: true },
+  unread: { type: Boolean, default: true },
+  actionUrl: { type: String, default: '/career' },
+  actionText: { type: String, default: 'View Details' },
 }, { timestamps: true });
 
 const userSchema = new mongoose.Schema({
@@ -97,6 +126,46 @@ const userSchema = new mongoose.Schema({
 
   // Activity log (last 50 entries)
   activityLog: [activitySchema],
+
+  // Notifications (citizen alerts & career updates)
+  notifications: [notificationSchema],
+
+  // Career Profile & Setup (Task 3)
+  careerProfile: {
+    targetJobRole: { type: String, default: '' },
+    experienceLevel: { type: String, default: 'Fresher' },
+    preferredIndustry: { type: String, default: 'Technology & IT' },
+    degree: { type: String, default: '' },
+    college: { type: String, default: '' },
+    graduationYear: { type: String, default: '' },
+    setupCompleted: { type: Boolean, default: false }
+  },
+  // Career Skills Self-Rating (1-10) (Task 3 & 4)
+  careerSkills: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+  // Career Analytics & Progress (Task 1, 5, 6, 7)
+  careerAnalytics: { type: mongoose.Schema.Types.Mixed, default: () => null },
+  // Career Goals (Task 14)
+  careerGoals: [{
+    title: { type: String, required: true },
+    target: { type: String, default: '100%' },
+    progress: { type: Number, default: 0 },
+    completed: { type: Boolean, default: false },
+    createdAt: { type: Date, default: Date.now }
+  }],
+  // Career Achievements (Task 15)
+  careerAchievements: [{
+    id: { type: String, required: true },
+    title: { type: String, required: true },
+    description: { type: String, default: '' },
+    icon: { type: String, default: 'Award' },
+    unlockedAt: { type: Date, default: Date.now }
+  }],
+  // Career Reviews (GitHub, Portfolio, ATS history)
+  careerReviews: [careerReviewSchema],
+  // Career Roadmap
+  careerRoadmap: { type: mongoose.Schema.Types.Mixed, default: () => null },
+  // Resume Builder Data & ATS history
+  resumeData: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
 }, {
   timestamps: true,
 });
@@ -126,6 +195,16 @@ userSchema.methods.toPublic = function () {
     studyPlans: this.studyPlans,
     doubts: this.doubts,
     wellnessLog: this.wellnessLog,
+    activityLog: this.activityLog,
+    notifications: this.notifications,
+    careerProfile: this.careerProfile,
+    careerSkills: this.careerSkills,
+    careerAnalytics: this.careerAnalytics,
+    careerGoals: this.careerGoals,
+    careerAchievements: this.careerAchievements,
+    careerReviews: this.careerReviews,
+    careerRoadmap: this.careerRoadmap,
+    resumeData: this.resumeData,
     createdAt: this.createdAt,
   };
 };

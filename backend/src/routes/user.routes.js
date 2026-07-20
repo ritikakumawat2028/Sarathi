@@ -35,4 +35,11 @@ router.post('/chat', asyncHandler(userController.chatWithAI));
 router.get('/wellness', asyncHandler(userController.getWellnessLog));
 router.post('/wellness', asyncHandler(userController.addWellnessLog));
 
+// Notifications (citizen & career alerts)
+router.get('/notifications', asyncHandler(userController.getNotifications));
+router.put('/notifications/read-all', asyncHandler(userController.markAllNotificationsRead));
+router.put('/notifications/:id/read', asyncHandler(userController.markNotificationRead));
+router.delete('/notifications/all', asyncHandler(userController.deleteNotification));
+router.delete('/notifications/:id', asyncHandler(userController.deleteNotification));
+
 export default router;

@@ -21,10 +21,19 @@ interface CareerNavTabsProps {
   onTabChange: (tabId: string) => void;
 }
 
+interface CareerTabItem {
+  id: string;
+  nameEn: string;
+  nameHi: string;
+  icon: React.ElementType;
+  isNew?: boolean;
+  isAI?: boolean;
+}
+
 export function CareerNavTabs({ activeTab, onTabChange }: CareerNavTabsProps) {
   const { language } = useLanguage();
 
-  const tabs = [
+  const tabs: CareerTabItem[] = [
     { id: 'skills', nameEn: 'Skills & Gap Analysis', nameHi: 'कौशल विश्लेषण', icon: Award },
     { id: 'courses', nameEn: 'Smart Courses', nameHi: 'स्मार्ट कोर्सेज', icon: BookOpen },
     { id: 'paths', nameEn: 'Career Paths', nameHi: 'करियर मार्ग', icon: Map },
